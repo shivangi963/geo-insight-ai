@@ -1,7 +1,7 @@
 Geo Insight AI  
 _Phase 0 – Data Science Foundations_
 
- Week 1 
+PHASE-0
 
  What I Did
 - Created and set up GitHub repository geo-insight-ai.
@@ -17,5 +17,3 @@ What I Learned
 - How to write Python classes and methods.
 - How to calculate derived features like price_per_sqft.
 - Basics of reading/writing CSV files using Pandas.
-
-
