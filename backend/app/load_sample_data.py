@@ -1,11 +1,12 @@
 from database import Database
 from models import PropertyCreate
+from datetime import datetime
 
 def load_sample_data():
     """Load sample property data"""
     collection = Database.get_collection("properties")
     
-    # Clear existing data
+
     collection.delete_many({})
     
     sample_properties = [
@@ -50,13 +51,16 @@ def load_sample_data():
         )
     ]
     
-    # Insert sample data
+
     for property in sample_properties:
-        collection.insert_one(property.model_dump())
+        property_dict = property.model_dump()
+        property_dict["created_at"] = datetime.utcnow()
+        property_dict["updated_at"] = datetime.utcnow()
+        collection.insert_one(property_dict)
     
-    print("✅ Sample data loaded successfully!")
+    print(" Sample data loaded successfully!")
     count = collection.count_documents({})
-    print(f"📊 Total properties in database: {count}")
+    print(f"Total properties in database: {count}")
 
 if __name__ == "__main__":
     load_sample_data()
