@@ -1,36 +1,56 @@
-import pymongo
 import os
-from typing import Optional
+from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class Database:
-    client = None
+    
+    client= None
     db = None
-
+    
     @classmethod
-    def connect(cls):
-        """Connect to MongoDB"""
+    async def connect(cls):
+     
         if cls.client is None:
             mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
             database_name = os.getenv("DATABASE_NAME", "geoinsight_ai")
             
-            cls.client = pymongo.MongoClient(mongodb_url)
+            cls.client = AsyncIOMotorClient(mongodb_url)
             cls.db = cls.client[database_name]
-            print("✅ Connected to MongoDB!")
+            print(" Connected to MongoDB asynchronously!")
+        
         return cls.db
-
+    
     @classmethod
-    def get_collection(cls, collection_name: str):
-        """Get a collection from database"""
+    async def get_database(cls):
+    
         if cls.db is None:
-            cls.connect()
-        return cls.db[collection_name]
-
+            await cls.connect()
+        return cls.db
+    
     @classmethod
-    def close(cls):
-        """Close database connection"""
+    async def get_collection(cls, collection_name: str):
+     
+        db = await cls.get_database()
+        return db[collection_name]
+    
+    @classmethod
+    async def close(cls):
+     
         if cls.client:
             cls.client.close()
-            print("❌ Disconnected from MongoDB")
+            print("Disconnected from MongoDB")
+
+async def get_database():
+ 
+    return await Database.get_database()
+
+
+def get_sync_database():
+
+    from pymongo import MongoClient
+    mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    database_name = os.getenv("DATABASE_NAME", "geoinsight_ai")
+    client = MongoClient(mongodb_url)
+    return client[database_name]

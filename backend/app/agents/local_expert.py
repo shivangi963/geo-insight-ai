@@ -3,38 +3,30 @@ import re
 from typing import Dict, Any, List, Tuple
 from dotenv import load_dotenv
 
-# Load environment variables
+
 load_dotenv()
 
 class LocalExpertAgent:
-    """
-    Enhanced AI Agent that acts as a local real estate expert
-    with advanced parsing and calculation capabilities
-    """
-    
     def __init__(self):
         self.name = "GeoInsight AI Agent"
         self.version = "2.0.0"
     
     def process_query(self, query: str) -> Dict[str, Any]:
-        """
-        Process a user query with enhanced parsing and calculations
-        """
+     
         query_lower = query.lower()
         
-        # Enhanced parsing for investment queries with numbers
         if self._is_investment_query(query_lower) and self._has_numbers(query):
             return self._handle_detailed_investment_query(query)
         
-        # Enhanced parsing for price queries with numbers
+     
         elif self._is_price_query(query_lower) and self._has_numbers(query):
             return self._handle_detailed_price_query(query)
         
-        # Enhanced parsing for rental queries with numbers
+      
         elif self._is_rental_query(query_lower) and self._has_numbers(query):
             return self._handle_detailed_rental_query(query)
         
-        # Fall back to simple rule-based responses
+   
         elif any(word in query_lower for word in ["price", "cost", "expensive", "cheap", "value"]):
             return self._handle_price_query(query)
         elif any(word in query_lower for word in ["investment", "roi", "return", "profit", "yield"]):
@@ -51,26 +43,24 @@ class LocalExpertAgent:
             return self._handle_general_query(query)
     
     def _extract_numbers(self, text: str) -> List[float]:
-        """
-        Extract all numbers from text, handling various formats
-        """
+   
         numbers = []
-        # Match numbers with optional commas, decimals, and dollar signs
+      
         patterns = [
-            r'\$?(\d{1,3}(?:,\d{3})*(?:\.\d+)?)',  # $250,000 or 250000
-            r'\$?(\d+(?:\.\d+)?)\s*(?:k|K)',        # $250k or 250K
-            r'\$?(\d+(?:\.\d+)?)\s*(?:m|M)',        # $1.5m or 2M
+            r'\$?(\d{1,3}(?:,\d{3})*(?:\.\d+)?)',  
+            r'\$?(\d+(?:\.\d+)?)\s*(?:k|K)',       
+            r'\$?(\d+(?:\.\d+)?)\s*(?:m|M)',        
         ]
         
         for pattern in patterns:
             matches = re.findall(pattern, text)
             for match in matches:
                 if match:
-                    # Clean and convert to float
+                   
                     clean_num = match.replace(',', '')
                     try:
                         num = float(clean_num)
-                        # Handle k (thousands) and m (millions)
+                      
                         if 'k' in text.lower() or 'K' in text.lower():
                             num *= 1000
                         elif 'm' in text.lower() or 'M' in text.lower():
@@ -82,7 +72,6 @@ class LocalExpertAgent:
         return numbers
     
     def _has_numbers(self, text: str) -> bool:
-        """Check if text contains numbers"""
         return len(self._extract_numbers(text)) > 0
     
     def _is_investment_query(self, text: str) -> bool:
@@ -100,40 +89,34 @@ class LocalExpertAgent:
         return any(keyword in text for keyword in rental_keywords)
     
     def _handle_detailed_investment_query(self, query: str) -> Dict[str, Any]:
-        """
-        Handle investment queries with specific numbers
-        """
         numbers = self._extract_numbers(query)
         
-        # Default values
+       
         price = 250000
         monthly_rent = 1800
-        down_payment_percent = 25  # Default 25%
-        loan_term = 30  # years
-        interest_rate = 6.5  # annual percentage
+        down_payment_percent = 25 
+        loan_term = 30  
+        interest_rate = 6.5 
         
-        # Parse numbers from query
+     
         if len(numbers) >= 1:
             price = numbers[0]
         if len(numbers) >= 2:
             monthly_rent = numbers[1]
         
-        # Try to extract down payment percentage
+       
         dp_match = re.search(r'(\d+)%\s*down', query.lower())
         if dp_match:
             down_payment_percent = float(dp_match.group(1))
         
-        # --- PERFORM DETAILED CALCULATIONS ---
-        # Annual Metrics
+    
         annual_rent = monthly_rent * 12
-        annual_expenses = annual_rent * 0.35  # 35% for expenses
+        annual_expenses = annual_rent * 0.35  
         annual_net_income = annual_rent - annual_expenses
         
-        # Financial Metrics
         down_payment = price * (down_payment_percent / 100)
         loan_amount = price - down_payment
         
-        # Monthly mortgage payment (simplified)
         monthly_interest_rate = interest_rate / 100 / 12
         num_payments = loan_term * 12
         if loan_amount > 0:
@@ -141,17 +124,16 @@ class LocalExpertAgent:
         else:
             monthly_mortgage = 0
         
-        # Cash Flow Analysis
+     
         monthly_expenses = annual_expenses / 12
         monthly_cash_flow = monthly_rent - monthly_expenses - monthly_mortgage
         
-        # Investment Metrics
         rental_yield = (annual_rent / price) * 100
         cap_rate = (annual_net_income / price) * 100
         cash_on_cash_roi = (annual_net_income / down_payment) * 100 if down_payment > 0 else 0
         
-        # Build detailed answer
-        answer = f"""**📊 DETAILED INVESTMENT ANALYSIS**
+        # 
+        answer = f"""** DETAILED INVESTMENT ANALYSIS**
 
 **PROPERTY SPECIFICS:**
 - Purchase Price: **${price:,.0f}**
@@ -166,15 +148,15 @@ class LocalExpertAgent:
 - Annual Mortgage Payments: ${monthly_mortgage * 12:,.0f}
 
 **KEY METRICS:**
-1. **Monthly Cash Flow:** ${monthly_cash_flow:,.0f} ({'✅ Positive' if monthly_cash_flow > 0 else '⚠️ Negative'})
-2. **Rental Yield:** {rental_yield:.1f}% ({'✅ Good' if rental_yield > 5 else '⚠️ Below Average'})
-3. **Cap Rate:** {cap_rate:.1f}% ({'✅ Good' if cap_rate > 4 else '⚠️ Below Average'})
-4. **Cash-on-Cash ROI:** {cash_on_cash_roi:.1f}% ({'✅ Excellent' if cash_on_cash_roi > 10 else '✅ Good' if cash_on_cash_roi > 8 else '⚠️ Marginal'})
+1. **Monthly Cash Flow:** ${monthly_cash_flow:,.0f} ({'Positive' if monthly_cash_flow > 0 else ' Negative'})
+2. **Rental Yield:** {rental_yield:.1f}% ({'Good' if rental_yield > 5 else ' Below Average'})
+3. **Cap Rate:** {cap_rate:.1f}% ({'Good' if cap_rate > 4 else 'Below Average'})
+4. **Cash-on-Cash ROI:** {cash_on_cash_roi:.1f}% ({' Excellent' if cash_on_cash_roi > 10 else ' Good' if cash_on_cash_roi > 8 else ' Marginal'})
 
 **RECOMMENDATION:**
-{'✅ **STRONG INVESTMENT** - Positive cash flow and good returns' if monthly_cash_flow > 200 and cash_on_cash_roi > 8 else 
-'⚠️ **MODERATE INVESTMENT** - Needs careful management' if monthly_cash_flow > 0 else 
-'❌ **POOR INVESTMENT** - Negative cash flow, reconsider'}
+{'**STRONG INVESTMENT** - Positive cash flow and good returns' if monthly_cash_flow > 200 and cash_on_cash_roi > 8 else 
+'**MODERATE INVESTMENT** - Needs careful management' if monthly_cash_flow > 0 else 
+'**POOR INVESTMENT** - Negative cash flow, reconsider'}
 
 **Next Steps:** Consider property taxes, maintenance costs, and vacancy rates for more accurate analysis."""
         
@@ -197,9 +179,6 @@ class LocalExpertAgent:
         }
     
     def _handle_detailed_price_query(self, query: str) -> Dict[str, Any]:
-        """
-        Handle price queries with specific numbers
-        """
         numbers = self._extract_numbers(query)
         
         if not numbers:
@@ -207,14 +186,13 @@ class LocalExpertAgent:
         
         price = numbers[0]
         
-        # Analyze price against market averages
-        answer = f"""**🏠 PRICE ANALYSIS**
+        answer = f"""** PRICE ANALYSIS**
 
 Your mentioned price: **${price:,.0f}**
 
 **MARKET COMPARISON:**
-- Compared to Urban Average ($300K-$800K): {'✅ Within range' if 300000 <= price <= 800000 else '⚠️ Below average' if price < 300000 else '💰 Above average'}
-- Compared to Suburban Average ($200K-$500K): {'✅ Within range' if 200000 <= price <= 500000 else '⚠️ Below average' if price < 200000 else '💰 Above average'}
+- Compared to Urban Average ($300K-$800K): {' Within range' if 300000 <= price <= 800000 else ' Below average' if price < 300000 else ' Above average'}
+- Compared to Suburban Average ($200K-$500K): {' Within range' if 200000 <= price <= 500000 else ' Below average' if price < 200000 else ' Above average'}
 
 **VALUE ASSESSMENT:**
 - For ${price:,.0f}, you should expect:
@@ -235,7 +213,7 @@ Your mentioned price: **${price:,.0f}**
                 "price": price,
                 "urban_comparison": "Within range" if 300000 <= price <= 800000 else "Below average" if price < 300000 else "Above average",
                 "suburban_comparison": "Within range" if 200000 <= price <= 500000 else "Below average" if price < 200000 else "Above average",
-                "expected_sqft": round(price / 1800),  # Average price per sqft
+                "expected_sqft": round(price / 1800),  
                 "expected_bedrooms": "2-3" if price <= 350000 else "3-4" if price <= 600000 else "4+"
             },
             "success": True,
@@ -243,9 +221,7 @@ Your mentioned price: **${price:,.0f}**
         }
     
     def _handle_detailed_rental_query(self, query: str) -> Dict[str, Any]:
-        """
-        Handle rental queries with specific numbers
-        """
+        
         numbers = self._extract_numbers(query)
         
         if not numbers:
@@ -253,18 +229,17 @@ Your mentioned price: **${price:,.0f}**
         
         rent_amount = numbers[0]
         
-        # Calculate what property value this rent suggests
-        suggested_value = rent_amount * 100  # 1% rule
+        suggested_value = rent_amount * 100  
         
-        answer = f"""**🏘️ RENTAL ANALYSIS**
+        answer = f"""**RENTAL ANALYSIS**
 
 Monthly Rent: **${rent_amount:,.0f}**
 
 **MARKET POSITIONING:**
-- Studio Apartments ($1,200-$1,800): {'✅ Competitive' if 1200 <= rent_amount <= 1800 else '⚠️ Outside range'}
-- 1-Bedroom ($1,800-$2,400): {'✅ Competitive' if 1800 <= rent_amount <= 2400 else '⚠️ Outside range'}
-- 2-Bedroom ($2,400-$3,000): {'✅ Competitive' if 2400 <= rent_amount <= 3000 else '⚠️ Outside range'}
-- 3-Bedroom ($3,000-$3,800): {'✅ Competitive' if 3000 <= rent_amount <= 3800 else '⚠️ Outside range'}
+- Studio Apartments ($1,200-$1,800): {'Competitive' if 1200 <= rent_amount <= 1800 else ' Outside range'}
+- 1-Bedroom ($1,800-$2,400): {'Competitive' if 1800 <= rent_amount <= 2400 else ' Outside range'}
+- 2-Bedroom ($2,400-$3,000): {' Competitive' if 2400 <= rent_amount <= 3000 else ' Outside range'}
+- 3-Bedroom ($3,000-$3,800): {' Competitive' if 3000 <= rent_amount <= 3800 else ' Outside range'}
 
 **PROPERTY VALUE (1% RULE):**
 This rent suggests a property value of **${suggested_value:,.0f}**
@@ -298,7 +273,6 @@ This rent suggests a property value of **${suggested_value:,.0f}**
             "confidence": 0.86
         }
     
-    # Keep your original simple handlers for queries without numbers
     def _handle_price_query(self, query: str) -> Dict[str, Any]:
         return {
             "query": query,
@@ -382,5 +356,4 @@ This rent suggests a property value of **${suggested_value:,.0f}**
             "success": True
         }
 
-# Create a singleton instance
 agent = LocalExpertAgent()

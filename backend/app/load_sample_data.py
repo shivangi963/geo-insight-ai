@@ -3,7 +3,6 @@ from models import PropertyCreate
 from datetime import datetime
 
 def load_sample_data():
-    """Load sample property data"""
     collection = Database.get_collection("properties")
     
 

@@ -1,10 +1,9 @@
-# Environment
-geoinsight_env/
+
+geo-insight_env/
 .env
 .env.local
 .env.production
 
-# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -12,19 +11,15 @@ __pycache__/
 .Python
 pip-log.txt
 
-# Database
 *.db
 *.sqlite3
 
-# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS
 .DS_Store
 Thumbs.db
 
-# Logs
 *.log

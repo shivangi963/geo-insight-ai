@@ -1,118 +1,28 @@
+
 import os
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
-import json
-
-print("✅ crud.py: Modules imported successfully")
+from bson import ObjectId
+from datetime import datetime
+from app.database import get_database, get_sync_database
 
 class PropertyCRUD:
-    """
-    Mock CRUD operations for properties
-    Uses in-memory data for demo purposes
-    """
     
     def __init__(self):
-        print("📁 Initializing PropertyCRUD with mock data")
+        print(" Initializing PropertyCRUD with mock data")
         self.properties = self._load_sample_data()
         self.next_id = len(self.properties) + 1
     
-    def _load_sample_data(self) -> List[Dict[str, Any]]:
-        """Load sample property data"""
-        sample_properties = [
-            {
-                "id": "1",
-                "address": "123 Main St",
-                "city": "New York",
-                "state": "NY",
-                "zip_code": "10001",
-                "price": 850000.00,
-                "bedrooms": 3,
-                "bathrooms": 2.0,
-                "square_feet": 1500,
-                "property_type": "Apartment",
-                "latitude": 40.7489,
-                "longitude": -73.9680,
-                "created_at": "2024-01-15T10:30:00",
-                "updated_at": "2024-01-15T10:30:00"
-            },
-            {
-                "id": "2", 
-                "address": "456 Oak Ave",
-                "city": "San Francisco",
-                "state": "CA",
-                "zip_code": "94102",
-                "price": 1200000.00,
-                "bedrooms": 4,
-                "bathrooms": 3.0,
-                "square_feet": 2200,
-                "property_type": "House",
-                "latitude": 37.7749,
-                "longitude": -122.4194,
-                "created_at": "2024-01-16T14:45:00",
-                "updated_at": "2024-01-16T14:45:00"
-            },
-            {
-                "id": "3",
-                "address": "789 Pine Rd",
-                "city": "Chicago",
-                "state": "IL", 
-                "zip_code": "60601",
-                "price": 550000.00,
-                "bedrooms": 2,
-                "bathrooms": 1.5,
-                "square_feet": 1100,
-                "property_type": "Condo",
-                "latitude": 41.8781,
-                "longitude": -87.6298,
-                "created_at": "2024-01-17T09:15:00",
-                "updated_at": "2024-01-17T09:15:00"
-            },
-            {
-                "id": "4",
-                "address": "101 Maple Ln",
-                "city": "Seattle",
-                "state": "WA",
-                "zip_code": "98101",
-                "price": 750000.00,
-                "bedrooms": 3,
-                "bathrooms": 2.5,
-                "square_feet": 1800,
-                "property_type": "Townhouse",
-                "latitude": 47.6062,
-                "longitude": -122.3321,
-                "created_at": "2024-01-18T11:20:00",
-                "updated_at": "2024-01-18T11:20:00"
-            },
-            {
-                "id": "5",
-                "address": "202 Elm St",
-                "city": "Austin",
-                "state": "TX",
-                "zip_code": "73301",
-                "price": 650000.00,
-                "bedrooms": 3,
-                "bathrooms": 2.0,
-                "square_feet": 1600,
-                "property_type": "House",
-                "latitude": 30.2672,
-                "longitude": -97.7431,
-                "created_at": "2024-01-19T16:30:00",
-                "updated_at": "2024-01-19T16:30:00"
-            }
-        ]
-        print(f" Loaded {len(sample_properties)} sample properties")
-        return sample_properties
-    
     def get_all_properties(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get all properties with pagination"""
+     
         print(f"Getting properties (skip={skip}, limit={limit})")
         properties = self.properties[skip:skip + limit]
         print(f" Returning {len(properties)} properties")
         return properties
     
     def get_property_by_id(self, property_id: str) -> Optional[Dict[str, Any]]:
-        """Get a property by ID"""
-        print(f"🔍 Searching for property ID: {property_id}")
+     
+        print(f"Searching for property ID: {property_id}")
         for prop in self.properties:
             if prop["id"] == property_id:
                 print(f"Found property: {prop['address']}")
@@ -121,7 +31,7 @@ class PropertyCRUD:
         return None
     
     def create_property(self, property_data: BaseModel) -> Dict[str, Any]:
-        """Create a new property"""
+   
         print(f"Creating new property: {property_data.address}")
         
         property_dict = property_data.dict()
@@ -136,8 +46,8 @@ class PropertyCRUD:
         return property_dict
     
     def update_property(self, property_id: str, property_data: BaseModel) -> Optional[Dict[str, Any]]:
-        """Update an existing property"""
-        print(f"🔄 Updating property ID: {property_id}")
+        
+        print(f"Updating property ID: {property_id}")
         
         for i, prop in enumerate(self.properties):
             if prop["id"] == property_id:
@@ -152,7 +62,7 @@ class PropertyCRUD:
         return None
     
     def delete_property(self, property_id: str) -> bool:
-        """Delete a property"""
+     
         print(f"Deleting property ID: {property_id}")
         
         for i, prop in enumerate(self.properties):
@@ -164,5 +74,169 @@ class PropertyCRUD:
         print(f"Property not found for deletion: {property_id}")
         return False
 
-# Create singleton instance
+
+NEIGHBORHOOD_ANALYSIS_COLLECTION = "neighborhood_analyses"
+
+async def create_neighborhood_analysis(analysis_data: Dict[str, Any]) -> str:
+
+    try:
+        db = await get_database()
+        
+     
+        analysis_data["created_at"] = datetime.now()
+        analysis_data["updated_at"] = datetime.now()
+        analysis_data["status"] = analysis_data.get("status", "processing")
+        
+        
+        result = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].insert_one(analysis_data)
+        
+        print(f"Created neighborhood analysis with ID: {result.inserted_id}")
+        return str(result.inserted_id)
+        
+    except Exception as e:
+        print(f" Error creating neighborhood analysis: {e}")
+      
+        import uuid
+        mock_id = str(uuid.uuid4())
+        print(f" Using mock ID: {mock_id}")
+        return mock_id
+
+async def get_neighborhood_analysis(analysis_id: str) -> Optional[Dict]:
+    
+    try:
+        db = await get_database()
+    
+        try:
+            obj_id = ObjectId(analysis_id)
+        except:
+           
+            obj_id = analysis_id
+            analysis = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].find_one(
+                {"_id": analysis_id}
+            )
+        else:
+            
+            analysis = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].find_one(
+                {"_id": obj_id}
+            )
+        
+        if analysis:
+           
+            analysis["id"] = str(analysis["_id"])
+            return analysis
+        return None
+        
+    except Exception as e:
+        print(f"Error getting neighborhood analysis: {e}")
+        return None
+
+async def get_recent_analyses(limit: int = 10) -> List[Dict]:
+    
+    try:
+        db = await get_database()
+        
+        analyses = []
+        cursor = db[NEIGHBORHOOD_ANALYSIS_COLLECTION].find().sort(
+            "created_at", -1
+        ).limit(limit)
+        
+        async for analysis in cursor:
+            analysis["id"] = str(analysis["_id"])
+            analyses.append(analysis)
+        
+        print(f"Retrieved {len(analyses)} recent analyses")
+        return analyses
+        
+    except Exception as e:
+        print(f"Error getting recent analyses: {e}")
+        return []
+
+async def update_analysis_status(analysis_id: str, status: str, updates: Optional[Dict] = None):
+  
+    try:
+        db = await get_database()
+        
+        update_data = {
+            "status": status,
+            "updated_at": datetime.now()
+        }
+        
+        if updates:
+            update_data.update(updates)
+        
+       
+        try:
+            obj_id = ObjectId(analysis_id)
+            result = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].update_one(
+                {"_id": obj_id},
+                {"$set": update_data}
+            )
+        except:
+          
+            result = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].update_one(
+                {"_id": analysis_id},
+                {"$set": update_data}
+            )
+        
+        if result.modified_count > 0:
+            print(f"Updated analysis {analysis_id} to status: {status}")
+        else:
+            print(f" No documents updated for analysis ID: {analysis_id}")
+            
+    except Exception as e:
+        print(f" Error updating analysis status: {e}")
+
+async def delete_neighborhood_analysis(analysis_id: str) -> bool:
+    
+    try:
+        db = await get_database()
+        
+       
+        try:
+            obj_id = ObjectId(analysis_id)
+            result = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].delete_one(
+                {"_id": obj_id}
+            )
+        except:
+          
+            result = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].delete_one(
+                {"_id": analysis_id}
+            )
+        
+        if result.deleted_count > 0:
+            print(f"Deleted analysis: {analysis_id}")
+            return True
+        else:
+            print(f" No analysis found to delete: {analysis_id}")
+            return False
+            
+    except Exception as e:
+        print(f"Error deleting neighborhood analysis: {e}")
+        return False
+
+
+async def get_analysis_count() -> int:
+    
+    try:
+        db = await get_database()
+        count = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].count_documents({})
+        return count
+    except Exception as e:
+        print(f"Error getting analysis count: {e}")
+        return 0
+
+async def initialize_collections():
+    
+    try:
+        db = await get_database()
+        
+        await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].create_index("created_at")
+        await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].create_index("status")
+        await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].create_index("address")
+        
+        print(" Database collections initialized with indexes")
+        
+    except Exception as e:
+        print(f"Error initializing collections: {e}")
+
 property_crud = PropertyCRUD()
