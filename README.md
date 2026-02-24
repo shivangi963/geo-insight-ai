@@ -311,19 +311,21 @@ Deploying to Google Cloud Run
   - bash# Authenticate Docker with Artifact Registry
   - gcloud auth configure-docker asia-south1-docker.pkg.dev
 
-  ```
-    Build for Cloud Run (linux/amd64 — required on Apple Silicon)
+    ```
+      Build for Cloud Run (linux/amd64 — required on Apple Silicon)
+        docker buildx build \
+          --platform linux/amd64 \
+          -f docker/Dockerfile.backend \
+          -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/backend:latest \
+          --push .
+
       docker buildx build \
         --platform linux/amd64 \
-        -f docker/Dockerfile.backend \
-        -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/backend:latest \
+        -f docker/Dockerfile.frontend \
+        -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/frontend:latest \
         --push .
 
-    docker buildx build \
-      --platform linux/amd64 \
-      -f docker/Dockerfile.frontend \
-      -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/frontend:latest \
-      --push .
+    ```
 
 
 5. Store secrets in Secret Manager
