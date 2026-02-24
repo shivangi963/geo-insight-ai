@@ -325,7 +325,6 @@ Deploying to Google Cloud Run
       -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/frontend:latest \
       --push .
 
-    ```
 
 5. Store secrets in Secret Manager
 - bashecho -n "your_gemini_key" | gcloud secrets create GOOGLE_API_KEY --data-file=-
