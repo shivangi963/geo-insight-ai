@@ -35,3 +35,22 @@ What I Learned
 -How to build an LLM pipeline using HuggingFace models.
 -How to structure a real project (folders, modules, virtual env, requirements).
 -How CV + NLP can combine to analyze locations intelligently.
+
+
+PHASE 2 — Building Backend Services
+
+What I Did
+- Built a full FastAPI backend with proper project structure (`app/`, `routers/`, `models/`, `crud/`)
+- Set up async MongoDB connection using Motor (async driver) with connection pooling
+- Implemented complete CRUD endpoints for properties (`/api/properties`)
+- Added proper Pydantic models for request validation and response serialization
+- Built the `/health` endpoint and `/api/stats` for system monitoring
+- Added middleware for logging, security headers, rate limiting (slowapi), and CORS
+- Loaded the Mumbai housing dataset (1000+ properties) into MongoDB using a custom loader script
+
+What I Learned
+- How FastAPI's async/await pattern works and why it matters for performance
+- The difference between sync and async database drivers (pymongo vs motor)
+- How Pydantic models enforce data validation at the API boundary
+- How to structure a backend with routers, models, and CRUD separation
+- How middleware works in ASGI applications
