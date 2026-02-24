@@ -368,10 +368,10 @@ echo -n "your_supabase_key" | gcloud secrets create SUPABASE_KEY --data-file=-
     --metadata-schema-uri=gs://google-cloud-aiplatform/schema/dataset/metadata/tabular_1.0.0.yaml \
     --region=asia-south1
 
-  # Then in the Cloud Console:
-  # Vertex AI → Datasets → your dataset → Train new model
-  # Choose AutoML → Tabular → Regression → target column: price_inr
-  # Let it run (takes ~1-2 hours), then check Feature Importance under Model Evaluation
+   Then in the Cloud Console:
+   Vertex AI → Datasets → your dataset → Train new model
+   Choose AutoML → Tabular → Regression → target column: price_inr
+   Let it run (takes ~1-2 hours), then check Feature Importance under Model Evaluation
 
 
   Local Development
@@ -382,11 +382,11 @@ pip install -r requirements.txt
 cp ../.env.example .env   # fill in your API keys
 uvicorn app.main:app --reload
 
-# Frontend (new terminal)
+  Frontend (new terminal)
 cd frontend
 streamlit run app.py
 
-# Celery worker (new terminal)
+  Celery worker (new terminal)
 cd backend
 celery -A celery_config.celery_app worker --loglevel=info
 

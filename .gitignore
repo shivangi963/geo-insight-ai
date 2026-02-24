@@ -112,7 +112,8 @@ backend/temp/
 *.pt
 *.pth
 yolov8*.pt
-!yolov8n.pt
+yolov8n.pt
+
 
 # =========================
 # Data Files
