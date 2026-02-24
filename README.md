@@ -374,23 +374,29 @@ Deploying to Google Cloud Run
    - Let it run (takes ~1-2 hours), then check Feature Importance under Model Evaluation
 
 
-  Local Development
 
-- bash# Backend
+Local Development
+
+  bash# Backend
+
 - cd backend
 - pip install -r requirements.txt
 - cp ../.env.example .env   # fill in your API keys
 - uvicorn app.main:app --reload
 
   Frontend (new terminal)
+
 - cd frontend
 - streamlit run app.py
 
   Celery worker (new terminal)
+
 - cd backend
 - celery -A celery_config.celery_app worker --loglevel=info
 
+
 API Documentation
+
 - Interactive docs available at http://localhost:8000/docs when backend is running.
 - Key endpoints:
 
@@ -404,7 +410,7 @@ API Documentation
 
   Tech Stack
 
-- Layer	                Technology
+- Layer	                 Technology
 - Backend API	          FastAPI + Uvicorn
 - Database	            MongoDB (Motor async)
 - Task Queue	          Celery + Redis
