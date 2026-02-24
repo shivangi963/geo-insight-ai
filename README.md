@@ -236,9 +236,11 @@ as $$
   limit match_count;
 $$;
 
+```
 
 
- n8n Workflow (optional)
+
+n8n Workflow (optional)
 
 - n8n is a workflow automation tool. The workflow in this project does: receive webhook → call FastAPI to start analysis → poll until task completes → send email with results.
 - Run n8n:
