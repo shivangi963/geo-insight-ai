@@ -237,77 +237,70 @@ as $$
 $$;
 
 
+
  n8n Workflow (optional)
 
-n8n is a workflow automation tool. The workflow in this project does: receive webhook → call FastAPI to start analysis → poll until task completes → send email with results.
-Run n8n:
- In bash : npx n8n
-Downloads and starts n8n at http://localhost:5678. Create a local account when it asks.
-Import the workflow:
+- n8n is a workflow automation tool. The workflow in this project does: receive webhook → call FastAPI to start analysis → poll until task completes → send email with results.
+- Run n8n:
+- In bash : npx n8n
+- Downloads and starts n8n at http://localhost:5678. Create a local account when it asks.
 
-Go to http://localhost:5678
-Workflows → Import from File
-Upload backend/n8n_workflow.json (do not forget to edit your email id in n8n_workflow.json )
-The full workflow will appear, pre-wired
+ Import the workflow:
 
-Set up email (Gmail SMTP):
-You need an App Password, not your regular Gmail password.
-Go to: Google Account → Security → 2-Step Verification → App Passwords → generate one for "Mail"
+- Go to http://localhost:5678
+- Workflows → Import from File
+- Upload backend/n8n_workflow.json (do not forget to edit your email id in n8n_workflow.json )
+- The full workflow will appear, pre-wired
+
+ Set up email (Gmail SMTP):
+ - You need an App Password, not your regular Gmail password.
+ - Go to: Google Account → Security → 2-Step Verification → App Passwords → generate one for "Mail"
+
 In n8n:
+- Click the Send Success Email node
+- Credentials → Create New → SMTP
 
-Click the Send Success Email node
-Credentials → Create New → SMTP
 Fill in:
-
-Host: smtp.gmail.com
-Port: 587
-SSL/TLS: STARTTLS
-Username: your Gmail
-Password: the App Password you just generated
+- Host: smtp.gmail.com
+- Port: 587
+- SSL/TLS: STARTTLS
+- Username: your Gmail
+- Password: the App Password you just generated
 
 Add to .env:
-envN8N_WEBHOOK_URL=http://localhost:5678/webhook/geoinsight-analysis
-EMAIL_USER=your@gmail.com
-EMAIL_PASS=your_app_password
-Activate and test:
-bash# Activate the workflow in the n8n UI first, then:
-curl -X POST http://localhost:5678/webhook/geoinsight-analysis \
-  -H "Content-Type: application/json" \
-  -d '{
-    "address": "Koramangala, Bengaluru, Karnataka, India",
-    "email": "your@email.com",
-    "radius_m": 1000
-  }'
+- envN8N_WEBHOOK_URL=http://localhost:5678/webhook/geoinsight-analysis
+- EMAIL_USER=your@gmail.com
+- EMAIL_PASS=your_app_password
 
 
 
  Quick Start with Docker
  
-bashdocker-compose up --build
+bash: docker-compose up --build
 
 This starts:
 
-  FastAPI backend on http://localhost:8000
-  Streamlit frontend on http://localhost:8501
-  MongoDB on port 27017
-  Redis on port 6379
-  Celery worker
-  n8n on http://localhost:5678
+  - FastAPI backend on http://localhost:8000
+  - Streamlit frontend on http://localhost:8501
+  - MongoDB on port 27017
+  - Redis on port 6379
+  - Celery worker
+  - n8n on http://localhost:5678
 
 Deploying to Google Cloud Run 
 
 1. Install & authenticate gcloud
-    bash# Install the Google Cloud CLI: https://cloud.google.com/sdk/docs/install
-    gcloud auth login
-    gcloud config set project YOUR_PROJECT_ID
+    - bash# Install the Google Cloud CLI: https://cloud.google.com/sdk/docs/install
+    - gcloud auth login
+    - gcloud config set project YOUR_PROJECT_ID
 2. Enable required APIs
-  bashgcloud services enable \
-    run.googleapis.com \
-    artifactregistry.googleapis.com \
-    secretmanager.googleapis.com
+  - bashgcloud services enable \
+  - run.googleapis.com \
+  - artifactregistry.googleapis.com \
+  - secretmanager.googleapis.com
 
 3. Create an Artifact Registry repository
-  bashgcloud artifacts repositories create geoinsight-repo \
+  - bashgcloud artifacts repositories create geoinsight-repo \
     --repository-format=docker \
     --location=asia-south1 \
     --description="GeoInsight AI container images"
@@ -316,18 +309,21 @@ Deploying to Google Cloud Run
   - bash# Authenticate Docker with Artifact Registry
   - gcloud auth configure-docker asia-south1-docker.pkg.dev
 
- Build for Cloud Run (linux/amd64 — required on Apple Silicon)
-  docker buildx build \
-    --platform linux/amd64 \
-    -f docker/Dockerfile.backend \
-    -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/backend:latest \
-    --push .
+  ```
+    Build for Cloud Run (linux/amd64 — required on Apple Silicon)
+      docker buildx build \
+        --platform linux/amd64 \
+        -f docker/Dockerfile.backend \
+        -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/backend:latest \
+        --push .
 
-docker buildx build \
-  --platform linux/amd64 \
-  -f docker/Dockerfile.frontend \
-  -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/frontend:latest \
-  --push .
+    docker buildx build \
+      --platform linux/amd64 \
+      -f docker/Dockerfile.frontend \
+      -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/frontend:latest \
+      --push .
+
+    ```
 
 5. Store secrets in Secret Manager
 - bashecho -n "your_gemini_key" | gcloud secrets create GOOGLE_API_KEY --data-file=-
@@ -336,7 +332,7 @@ docker buildx build \
 - echo -n "your_supabase_key" | gcloud secrets create SUPABASE_KEY --data-file=-
 
 6. Deploy the backend
-  bashgcloud run deploy geoinsight-backend \
+ - bashgcloud run deploy geoinsight-backend \
     --image asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/backend:latest \
     --region asia-south1 \
     --platform managed \
@@ -346,13 +342,14 @@ docker buildx build \
     --concurrency 80 \
     --min-instances 0 \
     --max-instances 5 \
-    --set-secrets "GOOGLE_API_KEY=GOOGLE_API_KEY:latest,MONGODB_URL=MONGODB_URL:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest" \
+    --set-secrets "GOOGLE_API_KEY=GOOGLE_API_KEY:latest,MONGODB_URL=MONGODB_URL:latest,SUPABASE_URL=SUPABASE_URL:latest SUPABASE_KEY=SUPABASE_KEY:latest" \
     --set-env-vars "DATABASE_NAME=geoinsight_ai,ENVIRONMENT=production"
+
   Note the public URL printed at the end — it looks like https://geoinsight-backend-xxxx-el.a.run.app.
 
 
 7. Deploy the frontend
-  bashgcloud run deploy geoinsight-frontend \
+  - bashgcloud run deploy geoinsight-frontend \
     --image asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/frontend:latest \
     --region asia-south1 \
     --platform managed \
@@ -362,8 +359,8 @@ docker buildx build \
 
 
 8. Vertex AI (optional exploration)
-  bash# Upload your cleaned Mumbai housing CSV as a managed dataset
-  gcloud ai datasets create \
+  - bash# Upload your cleaned Mumbai housing CSV as a managed dataset
+  - gcloud ai datasets create \
     --display-name="Mumbai Housing Prices" \
     --metadata-schema-uri=gs://google-cloud-aiplatform/schema/dataset/metadata/tabular_1.0.0.yaml \
     --region=asia-south1
@@ -376,23 +373,23 @@ docker buildx build \
 
   Local Development
 
-bash# Backend
-cd backend
-pip install -r requirements.txt
-cp ../.env.example .env   # fill in your API keys
-uvicorn app.main:app --reload
+- bash# Backend
+- cd backend
+- pip install -r requirements.txt
+- cp ../.env.example .env   # fill in your API keys
+- uvicorn app.main:app --reload
 
   Frontend (new terminal)
-cd frontend
-streamlit run app.py
+- cd frontend
+- streamlit run app.py
 
   Celery worker (new terminal)
-cd backend
-celery -A celery_config.celery_app worker --loglevel=info
+- cd backend
+- celery -A celery_config.celery_app worker --loglevel=info
 
 API Documentation
-Interactive docs available at http://localhost:8000/docs when backend is running.
-Key endpoints:
+- Interactive docs available at http://localhost:8000/docs when backend is running.
+- Key endpoints:
 
 - GET /health — System health check
 - GET /api/properties — List all properties
