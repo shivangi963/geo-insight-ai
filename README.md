@@ -159,11 +159,11 @@ python add_property_images.py
 
  Clone and install
 
-bashgit clone https://github.com/YOUR_USERNAME/geo-insight-ai.git
-cd geo-insight-ai
+- bash :git clone https://github.com/YOUR_USERNAME/geo-insight-ai.git
+- cd geo-insight-ai
 
-python -m venv venv
-source venv/bin/activate      
+- python -m venv venv
+- source venv/bin/activate      
 
 pip install -r requirements.txt
 
@@ -171,10 +171,10 @@ pip install -r requirements.txt
 
  Get a Gemini API key
 
-Go to https://aistudio.google.com/app/apikey
-Sign in with Google
-Click Create API Key
-Paste it into GOOGLE_API_KEY in .env
+- Go to https://aistudio.google.com/app/apikey
+- Sign in with Google
+- Click Create API Key
+- Paste it into GOOGLE_API_KEY in .env
 
 
 
@@ -182,17 +182,18 @@ Paste it into GOOGLE_API_KEY in .env
 
 This powers the "Find Similar Properties" feature. Skip if you don't need it — the rest of the app works fine without it.
 
-Create a free account at https://supabase.com
-Create a new project, choose a region near you
-Go to Settings → API and copy:
+- Create a free account at https://supabase.com
+- Create a new project, choose a region near you
+- Go to Settings → API and copy:
 
-Project URL → SUPABASE_URL
-anon public key → SUPABASE_KEY
+- Project URL → SUPABASE_URL
+- secret key → SUPABASE_KEY
 
 
 Open the SQL Editor in your Supabase dashboard and run:
 
-sqlcreate extension if not exists vector;
+```sql 
+create extension if not exists vector;
 
 create table if not exists property_embeddings (
   id uuid primary key default gen_random_uuid(),
@@ -234,7 +235,6 @@ as $$
   order by embedding <=> query_embedding
   limit match_count;
 $$;
-
 
 
  n8n Workflow (optional)
@@ -313,10 +313,10 @@ Deploying to Google Cloud Run
     --description="GeoInsight AI container images"
 
 4. Build and push images
-  bash# Authenticate Docker with Artifact Registry
-  gcloud auth configure-docker asia-south1-docker.pkg.dev
+  - bash# Authenticate Docker with Artifact Registry
+  - gcloud auth configure-docker asia-south1-docker.pkg.dev
 
-# Build for Cloud Run (linux/amd64 — required on Apple Silicon)
+ Build for Cloud Run (linux/amd64 — required on Apple Silicon)
   docker buildx build \
     --platform linux/amd64 \
     -f docker/Dockerfile.backend \
@@ -330,10 +330,10 @@ docker buildx build \
   --push .
 
 5. Store secrets in Secret Manager
-bashecho -n "your_gemini_key" | gcloud secrets create GOOGLE_API_KEY --data-file=-
-echo -n "your_mongo_atlas_url" | gcloud secrets create MONGODB_URL --data-file=-
-echo -n "your_supabase_url" | gcloud secrets create SUPABASE_URL --data-file=-
-echo -n "your_supabase_key" | gcloud secrets create SUPABASE_KEY --data-file=-
+- bashecho -n "your_gemini_key" | gcloud secrets create GOOGLE_API_KEY --data-file=-
+- echo -n "your_mongo_atlas_url" | gcloud secrets create MONGODB_URL --data-file=-
+- echo -n "your_supabase_url" | gcloud secrets create SUPABASE_URL --data-file=-
+- echo -n "your_supabase_key" | gcloud secrets create SUPABASE_KEY --data-file=-
 
 6. Deploy the backend
   bashgcloud run deploy geoinsight-backend \
@@ -369,9 +369,9 @@ echo -n "your_supabase_key" | gcloud secrets create SUPABASE_KEY --data-file=-
     --region=asia-south1
 
    Then in the Cloud Console:
-   Vertex AI → Datasets → your dataset → Train new model
-   Choose AutoML → Tabular → Regression → target column: price_inr
-   Let it run (takes ~1-2 hours), then check Feature Importance under Model Evaluation
+   - Vertex AI → Datasets → your dataset → Train new model
+   - Choose AutoML → Tabular → Regression → target column: price_inr
+   - Let it run (takes ~1-2 hours), then check Feature Importance under Model Evaluation
 
 
   Local Development
@@ -394,24 +394,24 @@ API Documentation
 Interactive docs available at http://localhost:8000/docs when backend is running.
 Key endpoints:
 
-GET /health — System health check
-GET /api/properties — List all properties
-POST /api/neighborhood/analyze — Start neighborhood analysis
-GET /api/tasks/{task_id} — Poll task status
-POST /api/agent/query — AI investment analysis
-POST /api/vector/search — Find visually similar properties
+- GET /health — System health check
+- GET /api/properties — List all properties
+- POST /api/neighborhood/analyze — Start neighborhood analysis
+- GET /api/tasks/{task_id} — Poll task status
+- POST /api/agent/query — AI investment analysis
+- POST /api/vector/search — Find visually similar properties
 
 
   Tech Stack
 
-Layer	                Technology
-Backend API	          FastAPI + Uvicorn
-Database	            MongoDB (Motor async)
-Task Queue	          Celery + Redis
-Vector DB	            Supabase (pgvector)
-Computer Vision	      YOLOv8 (Ultralytics), OpenCV, CLIP
-LLM / AI	            Gemini API, HuggingFace Transformers
-Geospatial	          osmnx, Folium, Geopy
-Frontend	            Streamlit
-Workflow	            n8n
-Deployment	          Docker, Google Cloud Run 
+- Layer	                Technology
+- Backend API	          FastAPI + Uvicorn
+- Database	            MongoDB (Motor async)
+- Task Queue	          Celery + Redis
+- Vector DB	            Supabase (pgvector)
+- Computer Vision	      YOLOv8 (Ultralytics), OpenCV, CLIP
+- LLM / AI	            Gemini API, HuggingFace Transformers
+- Geospatial	          osmnx, Folium, Geopy
+- Frontend	            Streamlit
+- Workflow	            n8n
+- Deployment	          Docker, Google Cloud Run 
