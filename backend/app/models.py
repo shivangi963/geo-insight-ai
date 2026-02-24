@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 
 
@@ -15,6 +15,7 @@ class PropertyBase(BaseModel):
     property_type: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    image_url: Optional[str] = None
 
 class PropertyCreate(PropertyBase):
     pass
@@ -87,22 +88,30 @@ class BuildingFootprint(BaseModel):
 class NeighborhoodAnalysis(BaseModel):
     
     address: str
-    coordinates: Coordinates
+    coordinates: Optional[Dict[str, float]] = None
     search_radius_m: int = Field(default=1000, description="Search radius in meters")
-    amenities: Dict[str, List[Amenity]] = Field(default_factory=dict)
-    building_footprints: List[BuildingFootprint] = Field(default_factory=list)
+    amenities: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    building_footprints: List[Dict[str, Any]] = Field(default_factory=list)
     walk_score: Optional[float] = Field(None, ge=0, le=100, description="Walkability score")
     map_path: Optional[str] = Field(None, description="Path to interactive map HTML file")
-    analysis_date: datetime = Field(default_factory=datetime.now)
-    @field_validator('coordinates', mode='before')
-    @classmethod
-    def normalize_coordinates(cls, v):
-        if isinstance(v, dict):
-            if 'latitude' in v and 'longitude' in v:
-                return v
-            elif 'lat' in v and 'lon' in v:
-                return {'latitude': v['lat'], 'longitude': v['lon']}
-        return v
+    status: Optional[str] = Field(default="pending")
+    progress: Optional[int] = Field(default=0)
+    analysis_date: Optional[datetime] = Field(default_factory=datetime.now)
+    total_amenities: Optional[int] = None
+    amenity_categories: Optional[int] = None
+
+    green_space_percentage: Optional[float] = Field(None, ge=0, le=100,
+        description="Percentage of green coverage in the area")
+    green_space_breakdown: Optional[Dict[str, float]] = Field(None,
+        description="Green space by category (parks, forests, etc.)")
+    green_space_visualization: Optional[str] = Field(None,
+        description="Relative path to the green-space overlay image")
+    green_pixels: Optional[int] = Field(None,
+        description="Number of green pixels detected")
+    total_pixels: Optional[int] = Field(None,
+        description="Total pixels analysed")
+
+    model_config = ConfigDict(from_attributes=True)
 
 class NeighborhoodAnalysisRequest(BaseModel):
    
@@ -118,23 +127,33 @@ class NeighborhoodAnalysisRequest(BaseModel):
     generate_map: Optional[bool] = Field(default=True)
 
 class NeighborhoodAnalysisResponse(BaseModel):
-  
     analysis_id: str
+    status: str
+    address: Optional[str] = None
+    walk_score: Optional[float] = None
+    total_amenities: Optional[int] = None  
+    building_count: Optional[int] = None  
+    map_path: Optional[str] = None
+    coordinates: Optional[Tuple[float, float]] = None
+    amenities: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    timestamp: Optional[str] = None
+    task_id: Optional[str] = None
+    message: Optional[str] = None
+
+class SatelliteAnalysisRequest(BaseModel):
+    
+    address: str
+    radius_m: int = Field(default=500, ge=100, le=2000)
+    calculate_green_space: bool = Field(default=True)
+
+
+class SatelliteAnalysisResponse(BaseModel):
+    
+    analysis_id: str
+    task_id: str
     address: str
     status: str
-    walk_score: Optional[float] = None
-    total_amenities: int
-    amenities: Dict[str, List[Amenity]] = Field(default_factory=dict)  
-    map_url: Optional[str] = None
-    created_at: datetime
-    @field_validator('created_at', mode='before')
-    @classmethod
-    def parse_created_at(cls, v):
-        if isinstance(v, str):
-            try:
-                
-                return datetime.fromisoformat(v.replace('Z', '+00:00'))
-            except:
-                
-                pass
-        return v
+    message: Optional[str] = None
+    created_at: str
+    green_space_percentage: Optional[float] = None
+    breakdown: Optional[Dict[str, float]] = None

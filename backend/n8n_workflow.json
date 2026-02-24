@@ -2,208 +2,230 @@
   "name": "GeoInsight Analysis Workflow",
   "nodes": [
     {
-      "parameters": {},
-      "id": "start",
-      "name": "Start",
-      "type": "n8n-nodes-base.start",
-      "typeVersion": 1,
-      "position": [250, 300]
-    },
-    {
       "parameters": {
-        "path": "/webhook/analysis",
-        "responseMode": "responseNode",
-        "options": {}
+        "path": "geoinsight-analysis",
+        "httpMethod": "POST",
+        "responseMode": "lastNode"
       },
-      "id": "webhook",
-      "name": "Analysis Webhook",
+      "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "webhookId": "analysis-webhook",
-      "position": [450, 300]
-    },
-    {
-      "parameters": {
-        "url": "http://localhost:8000/api/tasks/neighborhood/async",
-        "authentication": "none",
-        "sendQuery": true,
-        "sendBody": true,
-        "options": {
-          "timeout": 300000
-        }
-      },
-      "id": "fastapi",
-      "name": "Start Analysis",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [650, 300]
+      "position": [200, 300]
     },
     {
       "parameters": {
         "conditions": {
-          "string": [
+          "conditions": [
             {
-              "value1": "={{$json['status']}}",
-              "operation": "equals",
-              "value2": "queued"
+              "leftValue": "={{ $json.body.address }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
             }
           ]
         }
       },
-      "id": "if",
-      "name": "If Status Queued",
+      "name": "Validate Input",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [850, 300]
+      "typeVersion": 2,
+      "position": [420, 300]
     },
     {
       "parameters": {
-        "limit": 1,
-        "wait": true,
-        "limitType": "wait"
+        "method": "POST",
+        "url": "http://backend:8000/api/neighborhood/analyze",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n      address: $json.body.address,\n      radius_m: $json.body.radius_m ? Number($json.body.radius_m) : 1000,\n      amenity_types: [\"restaurant\",\"cafe\",\"school\",\"hospital\",\"park\",\"supermarket\"],\n      include_buildings: false,\n      generate_map: true\n    } }}",
+        "options": {
+          "timeout": 15000
+        }
       },
-      "id": "wait",
-      "name": "Wait for Completion",
+      "id": "start-analysis",
+      "name": "Start Analysis (FastAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 200]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "name": "Initial Wait",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [1050, 200]
+      "position": [860, 200]
     },
     {
       "parameters": {
-        "url": "http://localhost:8000/api/neighborhood/{{$json['analysis_id']}}",
-        "authentication": "none",
-        "options": {}
+        "method": "GET",
+        "url": "={{ 'http://backend:8000/api/tasks/' + $('Start Analysis (FastAPI)').item.json.task_id }}"
       },
-      "id": "getResults",
-      "name": "Get Results",
+      "name": "Poll Task Status",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1250, 200]
+      "position": [1080, 200]
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
-        "sendQuery": false,
-        "sendBody": true,
-        "options": {},
-        "nodeCredentialType": "n8n-nodes-base.httpBasicAuth"
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
       },
-      "id": "email",
-      "name": "Send Email",
+      "name": "Is Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "failed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "name": "Is Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1300, 380]
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "name": "Retry Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1520, 480]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://backend:8000/api/neighborhood/' + $('Start Analysis (FastAPI)').item.json.analysis_id }}"
+      },
+      "name": "Get Full Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1520, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const analysis = $input.item.json;\n\nconst address = analysis.address || 'your location';\nconst walkScore = analysis.walk_score ?? 'N/A';\nconst amenities = analysis.total_amenities ?? 0;\nconst greenPct = analysis.green_space_percentage != null\n  ? analysis.green_space_percentage + '%'\n  : 'N/A';\n\nconst body = `Hello,\n\nYour GeoInsight AI analysis for:\n📍 ${address}\n\nResults:\n\n🚶 Walk Score: ${walkScore}\n📍 Amenities: ${amenities}\n🌳 Green Space: ${greenPct}\n\nView full dashboard:\nhttp://localhost:8501\n\n— GeoInsight AI`;\n\nreturn [{\n  json: {\n    address,\n    walkScore,\n    amenities,\n    greenPct,\n    emailBody: body,\n    analysisId: $('Start Analysis (FastAPI)').item.json.analysis_id,\n    subject: `✅ GeoInsight Analysis Complete: ${address}`\n  }\n}];"
+      },
+      "name": "Format Email Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 200]
+    },
+    {
+      "parameters": {
+        "fromEmail": "email_id shou be here",
+        "toEmail": "={{ $json.body?.email || 'test@example.com' }}",
+        "subject": "={{ $json.subject }}",
+        "text": "={{ $json.emailBody }}"
+      },
+      "name": "Send Success Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [1450, 200],
+      "position": [1960, 200],
       "credentials": {
-        "httpBasicAuth": {
-          "id": "1",
-          "name": "Gmail"
+        "smtp": {
+          "id": "smtp-creds",
+          "name": "Gmail SMTP"
         }
       }
     },
     {
       "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "message",
-              "value": "Analysis failed"
-            }
-          ]
-        },
-        "options": {}
+        "fromEmail": "email_id should be here",
+        "toEmail": "={{ $('Webhook Trigger').item.json.body.email || 'test@example.com' }}",
+        "subject": " GeoInsight Analysis Failed",
+        "text": "Your GeoInsight analysis failed. Please try again."
       },
-      "id": "set",
-      "name": "Set Error Message",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3,
-      "position": [1250, 400]
+      "name": "Send Failure Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1520, 320],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-creds",
+          "name": "Gmail SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'complete', address: $json.address, walk_score: $json.walkScore, amenities: $json.amenities, analysis_id: $json.analysisId, email_sent: true } }}"
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2180, 200]
     }
   ],
   "connections": {
-    "Start": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Validate Input", "type": "main", "index": 0 }]]
+    },
+    "Validate Input": {
       "main": [
-        [
-          {
-            "node": "Analysis Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Start Analysis (FastAPI)", "type": "main", "index": 0 }],
+        [{ "node": "Reject — No Address", "type": "main", "index": 0 }]
       ]
     },
-    "Analysis Webhook": {
+    "Start Analysis (FastAPI)": {
+      "main": [[{ "node": "Initial Wait", "type": "main", "index": 0 }]]
+    },
+    "Initial Wait": {
+      "main": [[{ "node": "Poll Task Status", "type": "main", "index": 0 }]]
+    },
+    "Poll Task Status": {
+      "main": [[{ "node": "Is Completed?", "type": "main", "index": 0 }]]
+    },
+    "Is Completed?": {
       "main": [
-        [
-          {
-            "node": "Start Analysis",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Get Full Results", "type": "main", "index": 0 }],
+        [{ "node": "Is Failed?", "type": "main", "index": 0 }]
       ]
     },
-    "Start Analysis": {
+    "Is Failed?": {
       "main": [
-        [
-          {
-            "node": "If Status Queued",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Send Failure Email", "type": "main", "index": 0 }],
+        [{ "node": "Retry Wait", "type": "main", "index": 0 }]
       ]
     },
-    "If Status Queued": {
-      "main": [
-        [
-          {
-            "node": "Wait for Completion",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Set Error Message",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
+    "Retry Wait": {
+      "main": [[{ "node": "Poll Task Status", "type": "main", "index": 0 }]]
     },
-    "Wait for Completion": {
-      "main": [
-        [
-          {
-            "node": "Get Results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Get Full Results": {
+      "main": [[{ "node": "Format Email Body", "type": "main", "index": 0 }]]
     },
-    "Get Results": {
-      "main": [
-        [
-          {
-            "node": "Send Email",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Format Email Body": {
+      "main": [[{ "node": "Send Success Email", "type": "main", "index": 0 }]]
     },
-    "Set Error Message": {
-      "main": [
-        [
-          {
-            "node": "Send Email",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Send Success Email": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
     }
   }
 }

@@ -1,101 +1,141 @@
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from typing import Dict, Any
-import requests
-import json
+from fastapi import APIRouter, HTTPException, Request
+from typing import Dict, Any, Optional
+import httpx
 from datetime import datetime
+import asyncio
+import os
+import logging
 
-router = APIRouter(prefix="/api/workflow", tags=["workflow"])
+logger = logging.getLogger(__name__)
 
-@router.post("/trigger-analysis")
-async def trigger_analysis_workflow(
-    address: str,
-    radius_m: int = 1000,
-    email: str = None
-):
-    try:
-        analysis_response = requests.post(
-            "http://localhost:8000/api/neighborhood/analyze",
-            json={
-                "address": address,
-                "radius_m": radius_m,
-                "generate_map": True
-            }
-        )
-        
-        if analysis_response.status_code != 200:
-            raise HTTPException(status_code=400, detail="Analysis failed to start")
-        
-        analysis_data = analysis_response.json()
-        analysis_id = analysis_data["analysis_id"]
-        
-        import time
-        max_wait = 60  
-        wait_interval = 2
-        
-        for _ in range(max_wait // wait_interval):
-            
-            status_response = requests.get(
-                f"http://localhost:8000/api/neighborhood/{analysis_id}"
+router = APIRouter()
+
+
+SELF_BASE_URL = os.getenv("SELF_BASE_URL", "http://localhost:8000")
+
+
+@router.post("/trigger")
+async def trigger_analysis(payload: Dict[str, Any]):
+    
+    address = payload.get("address")
+    if not address:
+        raise HTTPException(status_code=400, detail="address is required")
+
+    radius_m = payload.get("radius_m", 1000)
+    if not isinstance(radius_m, int) or not (100 <= radius_m <= 5000):
+        radius_m = 1000
+
+    logger.info(f"[Workflow] Triggering analysis for: {address}")
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.post(
+                f"{SELF_BASE_URL}/api/neighborhood/analyze",
+                json={
+                    "address":          address,
+                    "radius_m":         radius_m,
+                    "amenity_types":    ["restaurant", "cafe", "school",
+                                         "hospital", "park", "supermarket"],
+                    "include_buildings": False,
+                    "generate_map":     True,
+                },
             )
-            
-            if status_response.status_code == 200:
-                status_data = status_response.json()
-                if status_data.get("status") == "completed":
-                
-                    if email:
-                    
-                        print(f"Would send email to {email}")
-                        print(f" Analysis complete for {address}")
-                        print(f" Walk Score: {status_data.get('walk_score')}")
-                    
-                    return {
-                        "workflow_id": f"workflow_{datetime.now().timestamp()}",
-                        "status": "completed",
-                        "analysis_id": analysis_id,
-                        "email_sent": bool(email)
-                    }
-            
-            time.sleep(wait_interval)
-        
+            resp.raise_for_status()
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=503, detail=f"Backend unreachable: {exc}")
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code,
+                                detail=exc.response.text)
 
-        if email:
-            print(f" Would send timeout email to {email}")
-        
-        return {
-            "workflow_id": f"workflow_{datetime.now().timestamp()}",
-            "status": "timeout",
-            "analysis_id": analysis_id,
-            "email_sent": bool(email)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/status/{workflow_id}")
-async def get_workflow_status(workflow_id: str):
+    data = resp.json()
+    logger.info(f"[Workflow] Started: analysis_id={data.get('analysis_id')}, "
+                f"task_id={data.get('task_id')}")
 
     return {
-        "workflow_id": workflow_id,
-        "status": "completed", 
-        "timestamp": datetime.now().isoformat()
+        "analysis_id": data.get("analysis_id"),
+        "task_id":     data.get("task_id"),
+        "address":     address,
+        "status":      "queued",
+        "triggered_at": datetime.now().isoformat(),
+        "poll_url":    f"{SELF_BASE_URL}/api/workflow/status/{data.get('task_id')}",
     }
 
-@router.post("/webhook/analysis")
-async def n8n_webhook_handler(payload: Dict[str, Any]):
 
-    try:
-        address = payload.get("address")
-        if not address:
-            raise HTTPException(status_code=400, detail="Address is required")
+@router.get("/status/{task_id}")
+async def get_workflow_status(task_id: str):
+   
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(f"{SELF_BASE_URL}/api/tasks/{task_id}")
+            resp.raise_for_status()
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=503, detail=f"Task service unreachable: {exc}")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Task not found")
+            raise HTTPException(status_code=exc.response.status_code,
+                                detail=exc.response.text)
+    return resp.json()
+
+
+@router.post("/webhook/analysis")
+async def n8n_webhook(payload: Dict[str, Any]):
+    address = payload.get("address")
+    if not address:
+        raise HTTPException(status_code=400, detail="address is required")
+
+    n8n_webhook_url = os.getenv(
+        "N8N_WEBHOOK_URL",
+        "http://localhost:5678/webhook/geoinsight-analysis"
+    )
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.post(n8n_webhook_url, json=payload)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.RequestError:
+          
+            logger.warning("n8n unreachable, triggering analysis directly")
+            return await trigger_analysis(payload)
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code,
+                                detail=exc.response.text)
+
+
+@router.post("/batch")
+async def batch_workflow(payload: Dict[str, Any]):
   
-        response = await trigger_analysis_workflow(
-            address=address,
-            radius_m=payload.get("radius_m", 1000),
-            email=payload.get("email")
-        )
-        
-        return response
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    addresses = payload.get("addresses", [])
+    if not addresses:
+        raise HTTPException(status_code=400, detail="addresses list is required")
+    if len(addresses) > 10:
+        raise HTTPException(status_code=400, detail="Max 10 addresses per batch")
+
+    radius_m = payload.get("radius_m", 1000)
+
+    async def _trigger_one(addr: str) -> Dict:
+        try:
+            return await trigger_analysis({"address": addr, "radius_m": radius_m})
+        except Exception as exc:
+            return {"address": addr, "status": "failed", "error": str(exc)}
+
+    results = await asyncio.gather(*[_trigger_one(a) for a in addresses])
+
+    return {
+        "batch_id":  f"batch_{int(datetime.now().timestamp())}",
+        "total":     len(addresses),
+        "triggered": [r for r in results if r.get("status") != "failed"],
+        "failed":    [r for r in results if r.get("status") == "failed"],
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@router.get("/health")
+async def workflow_health():
+    return {
+        "status":    "ok",
+        "service":   "GeoInsight Workflow Endpoints",
+        "timestamp": datetime.now().isoformat(),
+    }

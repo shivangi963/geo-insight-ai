@@ -1,32 +1,166 @@
-# Environment
+# =========================
+# Python Virtual Environments
+# =========================
+.venv/
 venv/
+env/
+ENV/
+geo-insight_env/
+
+# =========================
+# Python Cache & Build
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py.class
+*.so
+.Python
+
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.egg
+.installed.cfg
+
+# =========================
+# Environment Files
+# =========================
 .env
 .env.local
 .env.production
+.env.*.local
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# MongoDB
+# =========================
+# Logs
+# =========================
 *.log
+*.log.*
+logs/
 journal/
-*.lock
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Data files
-database.json
+# =========================
+# Databases
+# =========================
 *.db
 *.sqlite3
+database.json
+
+# =========================
+# Redis
+# =========================
+dump.rdb
+appendonly.aof
+
+# =========================
+# IDE
+# =========================
+.vscode/
+*.code-workspace
+.idea/
+*.iml
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =========================
+# Maps & Generated Results
+# =========================
+maps/
+results/
+backend/maps/
+backend/results/
+temp/
+backend/temp/
+
+# Ignore all HTML except templates/docs
+*.html
+!ui/templates/*.html
+!docs/*.html
+
+# =========================
+# OSMnx Cache
+# =========================
+.osmnx_cache/
+**/.osmnx_cache/
+
+# =========================
+# ML Models
+# =========================
+*.pt
+*.pth
+yolov8*.pt
+!yolov8n.pt
+
+# =========================
+# Data Files
+# =========================
+data/*.json
+!data/sample_*.json
+
+# =========================
+# Docker 
+# =========================
+docker-data/
+
+# =========================
+# Celery
+# =========================
+celerybeat-schedule
+celerybeat.pid
+
+# =========================
+# Testing
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# =========================
+# Security
+# =========================
+*.key
+*.pem
+secrets/
+credentials/
+
+# =========================
+# Temporary Files
+# =========================
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+.cache/
+
+
+# Folders to ignore
+docker/
+src/
+
+# Files to ignore
+docker-compose.yml
