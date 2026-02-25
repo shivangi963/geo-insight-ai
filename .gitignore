@@ -112,7 +112,7 @@ backend/temp/
 *.pt
 *.pth
 yolov8*.pt
-yolov8n.pt
+!yolov8n.pt
 
 
 # =========================
@@ -160,8 +160,5 @@ credentials/
 
 
 # Folders to ignore
-docker/
 src/
 
-# Files to ignore
-docker-compose.yml

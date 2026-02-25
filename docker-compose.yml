@@ -1,0 +1,165 @@
+version: "3.9"
+
+services:
+  #  DATABASES 
+  mongodb:
+    image: mongo:7.0
+    container_name: geoinsight-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: geoinsight_ai
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - geoinsight-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: geoinsight-redis
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - geoinsight-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # BACKEND 
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: geoinsight-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URL: mongodb://mongodb:27017
+      DATABASE_NAME: geoinsight_ai
+      REDIS_URL: redis://redis:6379/0
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-your_key_here}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - geoinsight-network
+
+  #  CELERY 
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: geoinsight-celery-worker
+    restart: always
+    environment:
+      MONGODB_URL: mongodb://mongodb:27017
+      DATABASE_NAME: geoinsight_ai
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-your_key_here}
+    depends_on:
+      - backend
+      - redis
+      - mongodb
+    networks:
+      - geoinsight-network
+    command: celery -A celery_config.celery_app worker --loglevel=info --pool=solo --concurrency=2
+
+  # FLOWER
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: geoinsight-flower
+    restart: on-failure
+    ports:
+      - "5555:5555"
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - geoinsight-network
+    command: celery -A celery_config.celery_app flower --port=5555
+    profiles:
+      - monitoring
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: geoinsight-n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      # Email via Gmail SMTP 
+      - N8N_EMAIL_MODE=smtp
+      - N8N_SMTP_HOST=smtp.gmail.com
+      - N8N_SMTP_PORT=587
+      - N8N_SMTP_USER=${EMAIL_USER:-}
+      - N8N_SMTP_PASS=${EMAIL_PASS:-}
+      - N8N_SMTP_SENDER=${EMAIL_USER:-noreply@geoinsight.ai}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - geoinsight-network
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # FRONTEND
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: geoinsight-frontend
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - geoinsight-network
+
+#  VOLUMES
+volumes:
+  mongodb_data:
+  mongodb_config:
+  redis_data:
+  n8n_data:
+
+# NETWORK 
+networks:
+  geoinsight-network:
+    driver: bridge
