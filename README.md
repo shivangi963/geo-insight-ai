@@ -113,7 +113,7 @@ What I Learned
 
 ---
 
- PHASE 5 — DevOps & Cloud Deployment
+ PHASE 5 — DevOps & Deployment
 
 What I Did
 
@@ -324,6 +324,6 @@ API Documentation
 - Geospatial	          osmnx, Folium, Geopy
 - Frontend	            Streamlit
 - Workflow	            n8n
-- Deployment	          Docker, Google Cloud Run 
+- Deployment	          Docker
 
 ```
