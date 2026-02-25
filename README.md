@@ -113,29 +113,6 @@ What I Learned
 
 ---
 
- PHASE 5 — DevOps & Cloud Deployment
-
-What I Did
-
-- Wrote multi-stage Dockerfile files for both the FastAPI backend and Streamlit frontend — builder stage installs dependencies, runtime stage is a lean image
-- Wrote a docker-compose.yml orchestrating all six services: MongoDB, Redis, FastAPI backend, Celery worker, n8n, and Streamlit frontend with health checks and named volumes
-- Tagged and pushed Docker images to Google Artifact Registry using gcloud
-- Deployed the FastAPI backend as a serverless Cloud Run service with auto-scaling, a public HTTPS URL, and environment variable injection via Secret Manager
-- Deployed the Streamlit frontend as a second Cloud Run service pointing to the backend's public URL
-- Configured Cloud Run concurrency, memory limits, and min-instances so cold starts stay under 3 seconds
-- Explored Vertex AI — uploaded the Mumbai housing dataset as a managed dataset, ran an AutoML tabular training job to predict property price and inspected the resulting feature importance chart
-- Configured a Cloud Run service account with least-privilege IAM roles (Artifact Registry Reader, Secret Manager Accessor, Cloud Run Invoker)
-
-What I Learned
-
-- The difference between a builder and a runtime Docker stage and why it matters for image size
-- How docker buildx enables multi-platform builds (amd64 for Cloud Run when developing on Apple Silicon)
-- How Google Artifact Registry differs from Docker Hub and why it integrates better with Cloud Run
-- How Cloud Run achieves serverless scaling — instances spin up per request, billing is per 100ms of CPU time
-- How Secret Manager lets you inject API keys at deploy time without hardcoding them in images
-- How Vertex AI AutoML handles feature engineering and model selection automatically, and when to use it vs. a custom training job
-- Why container-first deployment makes the app genuinely reproducible across local, staging, and production
-
 
 
 ---
@@ -289,90 +266,6 @@ This starts:
   - Celery worker
   - n8n on http://localhost:5678
 
-Deploying to Google Cloud Run 
-
-1. Install & authenticate gcloud
-    - bash# Install the Google Cloud CLI: https://cloud.google.com/sdk/docs/install
-    - gcloud auth login
-    - gcloud config set project YOUR_PROJECT_ID
-2. Enable required APIs
-  - bashgcloud services enable \
-  - run.googleapis.com \
-  - artifactregistry.googleapis.com \
-  - secretmanager.googleapis.com
-
-3. Create an Artifact Registry repository
-  - bashgcloud artifacts repositories create geoinsight-repo \
-    --repository-format=docker \
-    --location=asia-south1 \
-    --description="GeoInsight AI container images"
-
-4. Build and push images
-  - bash# Authenticate Docker with Artifact Registry
-  - gcloud auth configure-docker asia-south1-docker.pkg.dev
-
-    ```
-      Build for Cloud Run (linux/amd64 — required on Apple Silicon)
-        docker buildx build \
-          --platform linux/amd64 \
-          -f docker/Dockerfile.backend \
-          -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/backend:latest \
-          --push .
-
-      docker buildx build \
-        --platform linux/amd64 \
-        -f docker/Dockerfile.frontend \
-        -t asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/frontend:latest \
-        --push .
-
-    ```
-
-
-5. Store secrets in Secret Manager
-- bashecho -n "your_gemini_key" | gcloud secrets create GOOGLE_API_KEY --data-file=-
-- echo -n "your_mongo_atlas_url" | gcloud secrets create MONGODB_URL --data-file=-
-- echo -n "your_supabase_url" | gcloud secrets create SUPABASE_URL --data-file=-
-- echo -n "your_supabase_key" | gcloud secrets create SUPABASE_KEY --data-file=-
-
-6. Deploy the backend
- - bashgcloud run deploy geoinsight-backend \
-    --image asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/backend:latest \
-    --region asia-south1 \
-    --platform managed \
-    --allow-unauthenticated \
-    --memory 2Gi \
-    --cpu 2 \
-    --concurrency 80 \
-    --min-instances 0 \
-    --max-instances 5 \
-    --set-secrets "GOOGLE_API_KEY=GOOGLE_API_KEY:latest,MONGODB_URL=MONGODB_URL:latest,SUPABASE_URL=SUPABASE_URL:latest SUPABASE_KEY=SUPABASE_KEY:latest" \
-    --set-env-vars "DATABASE_NAME=geoinsight_ai,ENVIRONMENT=production"
-
-  Note the public URL printed at the end — it looks like https://geoinsight-backend-xxxx-el.a.run.app.
-
-
-7. Deploy the frontend
-  - bashgcloud run deploy geoinsight-frontend \
-    --image asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/geoinsight-repo/frontend:latest \
-    --region asia-south1 \
-    --platform managed \
-    --allow-unauthenticated \
-    --memory 512Mi \
-    --set-env-vars "BACKEND_URL=https://geoinsight-backend-xxxx-el.a.run.app"
-
-
-8. Vertex AI (optional exploration)
-  - bash# Upload your cleaned Mumbai housing CSV as a managed dataset
-  - gcloud ai datasets create \
-    --display-name="Mumbai Housing Prices" \
-    --metadata-schema-uri=gs://google-cloud-aiplatform/schema/dataset/metadata/tabular_1.0.0.yaml \
-    --region=asia-south1
-
-   Then in the Cloud Console:
-   - Vertex AI → Datasets → your dataset → Train new model
-   - Choose AutoML → Tabular → Regression → target column: price_inr
-   - Let it run (takes ~1-2 hours), then check Feature Importance under Model Evaluation
-
 ```
 
 Local Development
@@ -420,6 +313,6 @@ API Documentation
 - Geospatial	          osmnx, Folium, Geopy
 - Frontend	            Streamlit
 - Workflow	            n8n
-- Deployment	          Docker, Google Cloud Run 
+- Deployment	          Docker
 
 ```
