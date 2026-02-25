@@ -130,7 +130,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const analysis = $input.item.json;\n\nconst address = analysis.address || 'your location';\nconst walkScore = analysis.walk_score ?? 'N/A';\nconst amenities = analysis.total_amenities ?? 0;\nconst greenPct = analysis.green_space_percentage != null\n  ? analysis.green_space_percentage + '%'\n  : 'N/A';\n\nconst body = `Hello,\n\nYour GeoInsight AI analysis for:\n📍 ${address}\n\nResults:\n\n🚶 Walk Score: ${walkScore}\n📍 Amenities: ${amenities}\n🌳 Green Space: ${greenPct}\n\nView full dashboard:\nhttp://localhost:8501\n\n— GeoInsight AI`;\n\nreturn [{\n  json: {\n    address,\n    walkScore,\n    amenities,\n    greenPct,\n    emailBody: body,\n    analysisId: $('Start Analysis (FastAPI)').item.json.analysis_id,\n    subject: `✅ GeoInsight Analysis Complete: ${address}`\n  }\n}];"
+        "jsCode": "const analysis = $input.item.json;\n\n// Carry the recipient email forward from the original webhook body\nconst recipientEmail = $('Webhook Trigger').item.json.body?.email || 'test@example.com';\n\nconst address = analysis.address || 'your location';\nconst walkScore = analysis.walk_score ?? 'N/A';\nconst amenities = analysis.total_amenities ?? 0;\nconst greenPct = analysis.green_space_percentage != null\n  ? analysis.green_space_percentage + '%'\n  : 'N/A';\n\nconst body = `Hello,\n\nYour GeoInsight AI analysis for:\n📍 ${address}\n\nResults:\n\n🚶 Walk Score: ${walkScore}\n📍 Amenities: ${amenities}\n🌳 Green Space: ${greenPct}\n\nView full dashboard:\nhttp://localhost:8501\n\n— GeoInsight AI`;\n\nreturn [{\n  json: {\n    address,\n    walkScore,\n    amenities,\n    greenPct,\n    emailBody: body,\n    toEmail: recipientEmail,\n    analysisId: $('Start Analysis (FastAPI)').item.json.analysis_id,\n    subject: `✅ GeoInsight Analysis Complete: ${address}`\n  }\n}];"
       },
       "name": "Format Email Body",
       "type": "n8n-nodes-base.code",
@@ -139,8 +139,8 @@
     },
     {
       "parameters": {
-        "fromEmail": "email_id shou be here",
-        "toEmail": "={{ $json.body?.email || 'test@example.com' }}",
+        "fromEmail": "={{ $env.EMAIL_USER }}",
+        "toEmail": "={{ $json.toEmail }}",
         "subject": "={{ $json.subject }}",
         "text": "={{ $json.emailBody }}"
       },
@@ -157,10 +157,10 @@
     },
     {
       "parameters": {
-        "fromEmail": "email_id should be here",
-        "toEmail": "={{ $('Webhook Trigger').item.json.body.email || 'test@example.com' }}",
-        "subject": " GeoInsight Analysis Failed",
-        "text": "Your GeoInsight analysis failed. Please try again."
+        "fromEmail": "={{ $env.EMAIL_USER }}",
+        "toEmail": "={{ $('Webhook Trigger').item.json.body?.email || 'test@example.com' }}",
+        "subject": "❌ GeoInsight Analysis Failed",
+        "text": "Your GeoInsight analysis for {{ $('Webhook Trigger').item.json.body?.address }} failed. Please try again or contact support."
       },
       "name": "Send Failure Email",
       "type": "n8n-nodes-base.emailSend",
@@ -176,7 +176,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'complete', address: $json.address, walk_score: $json.walkScore, amenities: $json.amenities, analysis_id: $json.analysisId, email_sent: true } }}"
+        "responseBody": "={{ { status: 'complete', address: $json.address, walk_score: $json.walkScore, amenities: $json.amenities, analysis_id: $json.analysisId, email_sent: true, sent_to: $json.toEmail } }}"
       },
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
@@ -190,8 +190,7 @@
     },
     "Validate Input": {
       "main": [
-        [{ "node": "Start Analysis (FastAPI)", "type": "main", "index": 0 }],
-        [{ "node": "Reject — No Address", "type": "main", "index": 0 }]
+        [{ "node": "Start Analysis (FastAPI)", "type": "main", "index": 0 }]
       ]
     },
     "Start Analysis (FastAPI)": {

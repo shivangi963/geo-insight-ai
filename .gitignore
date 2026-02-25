@@ -105,6 +105,7 @@ backend/temp/
 # =========================
 .osmnx_cache/
 **/.osmnx_cache/
+backend/app/.osmnx_cache/
 
 # =========================
 # ML Models
