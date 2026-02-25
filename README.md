@@ -119,23 +119,11 @@ What I Did
 
 - Wrote multi-stage Dockerfile files for both the FastAPI backend and Streamlit frontend — builder stage installs dependencies, runtime stage is a lean image
 - Wrote a docker-compose.yml orchestrating all six services: MongoDB, Redis, FastAPI backend, Celery worker, n8n, and Streamlit frontend with health checks and named volumes
-- Tagged and pushed Docker images to Google Artifact Registry using gcloud
-- Deployed the FastAPI backend as a serverless Cloud Run service with auto-scaling, a public HTTPS URL, and environment variable injection via Secret Manager
-- Deployed the Streamlit frontend as a second Cloud Run service pointing to the backend's public URL
-- Configured Cloud Run concurrency, memory limits, and min-instances so cold starts stay under 3 seconds
-- Explored Vertex AI — uploaded the Mumbai housing dataset as a managed dataset, ran an AutoML tabular training job to predict property price and inspected the resulting feature importance chart
-- Configured a Cloud Run service account with least-privilege IAM roles (Artifact Registry Reader, Secret Manager Accessor, Cloud Run Invoker)
 
 What I Learned
 
 - The difference between a builder and a runtime Docker stage and why it matters for image size
 - How docker buildx enables multi-platform builds (amd64 for Cloud Run when developing on Apple Silicon)
-- How Google Artifact Registry differs from Docker Hub and why it integrates better with Cloud Run
-- How Cloud Run achieves serverless scaling — instances spin up per request, billing is per 100ms of CPU time
-- How Secret Manager lets you inject API keys at deploy time without hardcoding them in images
-- How Vertex AI AutoML handles feature engineering and model selection automatically, and when to use it vs. a custom training job
-- Why container-first deployment makes the app genuinely reproducible across local, staging, and production
-
 
 
 ---
