@@ -7,7 +7,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 @shared_task(bind=True, name="cleanup_old_tasks")
 def cleanup_old_tasks(self) -> Dict:
     try:

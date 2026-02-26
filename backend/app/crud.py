@@ -4,7 +4,7 @@ from bson import ObjectId
 from datetime import datetime
 import logging
 
-from .database import get_database
+from .database import get_database, get_sync_database
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,6 @@ def document_to_dict(doc: Dict) -> Dict:
         doc["id"] = str(doc["_id"])
         del doc["_id"]
     return doc
-
 
 class PropertyCRUD:
 

@@ -88,6 +88,7 @@ def get_sync_database():
     logger.info(f"Creating sync connection: {MONGODB_URL}")
     
     try:
+        
         client = MongoClient(
             MONGODB_URL,
             serverSelectionTimeoutMS=5000
@@ -95,7 +96,7 @@ def get_sync_database():
         client.admin.command('ping')
         db = client[DATABASE_NAME]
         logger.info(" Sync MongoDB connected")
-        return db
+        return client, db
     except Exception as e:
         logger.error(f" Sync connection failed: {e}")
         raise

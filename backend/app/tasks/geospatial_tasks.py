@@ -12,7 +12,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 MAPS_DIR = os.path.join(PROJECT_ROOT, "maps")
 
 def update_analysis_status_sync(db, analysis_id: str, status: str, updates: Dict = None):
-   
+
     try:
         update_data = {
             "status": status,

@@ -39,7 +39,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ {\n      address: $json.body.address,\n      radius_m: $json.body.radius_m ? Number($json.body.radius_m) : 1000,\n      amenity_types: [\"restaurant\",\"cafe\",\"school\",\"hospital\",\"park\",\"supermarket\"],\n      include_buildings: false,\n      generate_map: true\n    } }}",
         "options": {
-          "timeout": 15000
+          "timeout": 1500000
         }
       },
       "id": "start-analysis",
@@ -159,7 +159,7 @@
       "parameters": {
         "fromEmail": "={{ $env.EMAIL_USER }}",
         "toEmail": "={{ $('Webhook Trigger').item.json.body?.email || 'test@example.com' }}",
-        "subject": "❌ GeoInsight Analysis Failed",
+        "subject": "GeoInsight Analysis Failed",
         "text": "Your GeoInsight analysis for {{ $('Webhook Trigger').item.json.body?.address }} failed. Please try again or contact support."
       },
       "name": "Send Failure Email",

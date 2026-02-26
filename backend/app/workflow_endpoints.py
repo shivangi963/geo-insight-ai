@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException, Request
 from typing import Dict, Any, Optional
 import httpx
@@ -11,13 +10,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
 SELF_BASE_URL = os.getenv("SELF_BASE_URL", "http://localhost:8000")
 
 
 @router.post("/trigger")
 async def trigger_analysis(payload: Dict[str, Any]):
-    
+
     address = payload.get("address")
     if not address:
         raise HTTPException(status_code=400, detail="address is required")
@@ -64,7 +62,7 @@ async def trigger_analysis(payload: Dict[str, Any]):
 
 @router.get("/status/{task_id}")
 async def get_workflow_status(task_id: str):
-   
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             resp = await client.get(f"{SELF_BASE_URL}/api/tasks/{task_id}")
@@ -81,6 +79,11 @@ async def get_workflow_status(task_id: str):
 
 @router.post("/webhook/analysis")
 async def n8n_webhook(payload: Dict[str, Any]):
+    """
+    Tries to forward to n8n first (for email notification).
+    Falls back to direct analysis if n8n is unreachable OR returns any error
+    (e.g. workflow not yet activated, wrong webhook path, etc.)
+    """
     address = payload.get("address")
     if not address:
         raise HTTPException(status_code=400, detail="address is required")
@@ -94,19 +97,30 @@ async def n8n_webhook(payload: Dict[str, Any]):
         try:
             resp = await client.post(n8n_webhook_url, json=payload)
             resp.raise_for_status()
+            logger.info(f"[Workflow] n8n accepted request for: {address}")
             return resp.json()
-        except httpx.RequestError:
-          
-            logger.warning("n8n unreachable, triggering analysis directly")
-            return await trigger_analysis(payload)
+
+        except httpx.RequestError as exc:
+            # n8n not running at all
+            logger.warning(f"n8n unreachable ({exc}), triggering analysis directly")
+
         except httpx.HTTPStatusError as exc:
-            raise HTTPException(status_code=exc.response.status_code,
-                                detail=exc.response.text)
+            # n8n is running but returned an error:
+            # - 404: workflow not activated / wrong webhook path
+            # - 500: internal n8n error
+            # In all cases, fall back gracefully instead of propagating the error
+            logger.warning(
+                f"n8n returned HTTP {exc.response.status_code} "
+                f"({exc.response.text[:120]}), triggering analysis directly"
+            )
+
+    # Fallback: run the analysis directly (no email notification)
+    return await trigger_analysis(payload)
 
 
 @router.post("/batch")
 async def batch_workflow(payload: Dict[str, Any]):
-  
+
     addresses = payload.get("addresses", [])
     if not addresses:
         raise HTTPException(status_code=400, detail="addresses list is required")
@@ -134,8 +148,22 @@ async def batch_workflow(payload: Dict[str, Any]):
 
 @router.get("/health")
 async def workflow_health():
+    """Check n8n reachability and return status."""
+    n8n_url = os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook/geoinsight-analysis")
+    n8n_base = n8n_url.split("/webhook")[0]
+
+    n8n_status = "unknown"
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            r = await client.get(f"{n8n_base}/healthz")
+            n8n_status = "reachable" if r.status_code == 200 else f"HTTP {r.status_code}"
+        except Exception as exc:
+            n8n_status = f"unreachable ({exc})"
+
     return {
         "status":    "ok",
         "service":   "GeoInsight Workflow Endpoints",
+        "n8n":       n8n_status,
+        "n8n_url":   n8n_url,
         "timestamp": datetime.now().isoformat(),
     }
