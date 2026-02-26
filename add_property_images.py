@@ -1,6 +1,11 @@
 
+import os
+import certifi
+from dotenv import load_dotenv
 from pymongo import MongoClient
 import random
+
+
 
 PROPERTY_IMAGES = {
     "Apartment": [
@@ -32,7 +37,17 @@ DEFAULT_IMAGES = [
 ]
 
 def add_images_to_properties():
-    client = MongoClient("mongodb://localhost:27017")
+
+    load_dotenv()
+    mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+   
+    if "mongodb+srv" in mongodb_url:
+        print("Connecting to Atlas with SSL...")
+        client = MongoClient(mongodb_url, tlsCAFile=certifi.where())
+    else:
+        print("Connecting to Localhost...")
+        client = MongoClient(mongodb_url)
+    
     db = client["geoinsight_ai"]
     
     properties = list(db.properties.find({"image_url": {"$exists": False}}))

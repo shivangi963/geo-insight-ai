@@ -18,7 +18,7 @@ except ImportError:
 st.set_page_config(
     page_title=ui_config.page_title,
     layout=ui_config.layout,
-    initial_sidebar_state="auto"   
+    initial_sidebar_state="auto"
 )
 
 def _render_sidebar():
@@ -29,10 +29,10 @@ def _render_sidebar():
         st.markdown("Recent Searches")
         history = st.session_state.get("analysis_history", [])
         if history:
-            for item in reversed(history[-5:]):
+            for i, item in enumerate(reversed(history[-5:])):
                 addr = item.get("address", "")[:30]
                 ws   = item.get("walk_score")
-                if st.button(f" {addr}", key=f"sb_{addr}", use_container_width=True):
+                if st.button(f" {addr}", key=f"sb_{i}_{addr}", use_container_width=True):
                     st.session_state.nav_to_analysis = item.get("address", "")
                     st.rerun()
                 if ws:

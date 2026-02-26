@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import argparse
 from typing import Optional
+import certifi
 import time
 
 class MumbaiHousingLoader:
@@ -13,9 +14,18 @@ class MumbaiHousingLoader:
         MONGODB_URL: str = "mongodb://localhost:27017",
         db_name: str = "geoinsight_ai"
     ):
-        self.client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
+        if "mongodb+srv" in MONGODB_URL:
+            self.client = MongoClient(
+                MONGODB_URL, 
+                tlsCAFile=certifi.where(), 
+                serverSelectionTimeoutMS=5000
+            )
+        else:
+            self.client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
+            
         self.db = self.client[db_name]
         self.collection = self.db["properties"]
+
 
     def clean_price_with_unit(self, price_value, price_unit) -> Optional[float]:
         if pd.isna(price_value):
@@ -240,7 +250,8 @@ def main():
     args = parser.parse_args()
 
     loader = MumbaiHousingLoader(
-        MONGODB_URL=args.MONGODB_URL,
+        MONGODB_URL=args.mongodb_url,#(if using atlas )
+    #   MONGODB_URL=args.MONGODB_URL, #(if using local)
         db_name=args.db_name
     )
 

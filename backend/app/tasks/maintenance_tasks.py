@@ -1,4 +1,3 @@
-# REPLACE the entire file content with:
 from celery import shared_task
 from datetime import datetime, timedelta
 from typing import Dict
@@ -7,13 +6,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 @shared_task(bind=True, name="cleanup_old_tasks")
 def cleanup_old_tasks(self) -> Dict:
+    mongo_client = None
     try:
         self.update_state(state='PROGRESS', meta={'status': 'Cleaning up old analyses...'})
 
         from app.database import get_sync_database
-        db = get_sync_database()
+        mongo_client, db = get_sync_database()
 
         cutoff = datetime.now() - timedelta(hours=24)
 
@@ -49,6 +50,13 @@ def cleanup_old_tasks(self) -> Dict:
             'timestamp': datetime.now().isoformat()
         }
 
+    finally:
+        if mongo_client is not None:
+            try:
+                mongo_client.close()
+            except Exception:
+                pass
+
 
 @shared_task(bind=True, name="update_analysis_results")
 def update_analysis_results(self, analysis_id: str) -> Dict:
@@ -66,9 +74,10 @@ def update_analysis_results(self, analysis_id: str) -> Dict:
 
 @shared_task(bind=True, name="archive_old_results")
 def archive_old_results(self, days_old: int = 30) -> Dict:
+    mongo_client = None
     try:
         from app.database import get_sync_database
-        db = get_sync_database()
+        mongo_client, db = get_sync_database()
 
         cutoff = datetime.now() - timedelta(days=days_old)
 
@@ -96,3 +105,10 @@ def archive_old_results(self, days_old: int = 30) -> Dict:
             'error': str(e),
             'timestamp': datetime.now().isoformat()
         }
+
+    finally:
+        if mongo_client is not None:
+            try:
+                mongo_client.close()
+            except Exception:
+                pass
