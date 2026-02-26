@@ -12,6 +12,8 @@ router = APIRouter()
 
 SELF_BASE_URL = os.getenv("SELF_BASE_URL", "http://localhost:8000")
 
+DEFAULT_AMENITY_TYPES = ["restaurant", "cafe", "school", "hospital", "park", "supermarket"]
+
 
 @router.post("/trigger")
 async def trigger_analysis(payload: Dict[str, Any]):
@@ -24,19 +26,20 @@ async def trigger_analysis(payload: Dict[str, Any]):
     if not isinstance(radius_m, int) or not (100 <= radius_m <= 5000):
         radius_m = 1000
 
-    logger.info(f"[Workflow] Triggering analysis for: {address}")
+    amenity_types = payload.get("amenity_types") or DEFAULT_AMENITY_TYPES
+
+    logger.info(f"[Workflow] Triggering analysis for: {address}, amenities: {amenity_types}")
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             resp = await client.post(
                 f"{SELF_BASE_URL}/api/neighborhood/analyze",
                 json={
-                    "address":          address,
-                    "radius_m":         radius_m,
-                    "amenity_types":    ["restaurant", "cafe", "school",
-                                         "hospital", "park", "supermarket"],
+                    "address":           address,
+                    "radius_m":          radius_m,
+                    "amenity_types":     amenity_types,   
                     "include_buildings": False,
-                    "generate_map":     True,
+                    "generate_map":      True,
                 },
             )
             resp.raise_for_status()
@@ -51,12 +54,12 @@ async def trigger_analysis(payload: Dict[str, Any]):
                 f"task_id={data.get('task_id')}")
 
     return {
-        "analysis_id": data.get("analysis_id"),
-        "task_id":     data.get("task_id"),
-        "address":     address,
-        "status":      "queued",
+        "analysis_id":  data.get("analysis_id"),
+        "task_id":      data.get("task_id"),
+        "address":      address,
+        "status":       "queued",
         "triggered_at": datetime.now().isoformat(),
-        "poll_url":    f"{SELF_BASE_URL}/api/workflow/status/{data.get('task_id')}",
+        "poll_url":     f"{SELF_BASE_URL}/api/workflow/status/{data.get('task_id')}",
     }
 
 
@@ -79,11 +82,7 @@ async def get_workflow_status(task_id: str):
 
 @router.post("/webhook/analysis")
 async def n8n_webhook(payload: Dict[str, Any]):
-    """
-    Tries to forward to n8n first (for email notification).
-    Falls back to direct analysis if n8n is unreachable OR returns any error
-    (e.g. workflow not yet activated, wrong webhook path, etc.)
-    """
+    
     address = payload.get("address")
     if not address:
         raise HTTPException(status_code=400, detail="address is required")
@@ -101,20 +100,13 @@ async def n8n_webhook(payload: Dict[str, Any]):
             return resp.json()
 
         except httpx.RequestError as exc:
-            # n8n not running at all
             logger.warning(f"n8n unreachable ({exc}), triggering analysis directly")
 
         except httpx.HTTPStatusError as exc:
-            # n8n is running but returned an error:
-            # - 404: workflow not activated / wrong webhook path
-            # - 500: internal n8n error
-            # In all cases, fall back gracefully instead of propagating the error
             logger.warning(
                 f"n8n returned HTTP {exc.response.status_code} "
                 f"({exc.response.text[:120]}), triggering analysis directly"
             )
-
-    # Fallback: run the analysis directly (no email notification)
     return await trigger_analysis(payload)
 
 
@@ -127,11 +119,16 @@ async def batch_workflow(payload: Dict[str, Any]):
     if len(addresses) > 10:
         raise HTTPException(status_code=400, detail="Max 10 addresses per batch")
 
-    radius_m = payload.get("radius_m", 1000)
+    radius_m     = payload.get("radius_m", 1000)
+    amenity_types = payload.get("amenity_types") or DEFAULT_AMENITY_TYPES  
 
     async def _trigger_one(addr: str) -> Dict:
         try:
-            return await trigger_analysis({"address": addr, "radius_m": radius_m})
+            return await trigger_analysis({
+                "address":      addr,
+                "radius_m":     radius_m,
+                "amenity_types": amenity_types,
+            })
         except Exception as exc:
             return {"address": addr, "status": "failed", "error": str(exc)}
 
@@ -148,8 +145,8 @@ async def batch_workflow(payload: Dict[str, Any]):
 
 @router.get("/health")
 async def workflow_health():
-    """Check n8n reachability and return status."""
-    n8n_url = os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook/geoinsight-analysis")
+
+    n8n_url  = os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook/geoinsight-analysis")
     n8n_base = n8n_url.split("/webhook")[0]
 
     n8n_status = "unknown"

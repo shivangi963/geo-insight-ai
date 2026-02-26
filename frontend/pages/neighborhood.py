@@ -16,7 +16,7 @@ from components.header import render_section_header
 from config import map_config, TASK_MAX_WAIT
 
 def render_neighborhood_page():
-    render_section_header("Neighborhood Intelligence")
+    render_section_header("Neighborhood Analysis")
     st.markdown(
         "Get a complete picture of any neighbourhood — nearby places, walkability score, green coverage, and map."
     )
@@ -127,6 +127,7 @@ def _handle_analysis_submission(address: str, radius: int, amenities: list, emai
                 "address": address,
                 "radius_m": radius,
                 "email": email or "",
+                "amenity_types": amenities,          
             }
             resp = _req.post(
                 f"{api.base_url}/api/workflow/webhook/analysis",
@@ -137,14 +138,14 @@ def _handle_analysis_submission(address: str, radius: int, amenities: list, emai
             response = resp.json()
         except Exception as exc:
             show_warning_message(f"Workflow unavailable ({exc}), running direct analysis (no email).")
+         
             response = api.start_neighborhood_analysis({
                 "address": address,
                 "radius_m": radius,
-                "amenity_types": amenities,
+                "amenity_types": amenities,          
                 "include_buildings": False,
                 "generate_map": True,
             })
-   
 
     if not response:
         return
@@ -529,6 +530,3 @@ def _render_analysis_card(analysis: dict):
                     full = api.get_analysis(aid)
                     if full:
                         _display_analysis_results(full, aid)
-
-
-                        
