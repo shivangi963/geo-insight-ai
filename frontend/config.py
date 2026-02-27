@@ -5,7 +5,7 @@ from typing import List
 
 @dataclass
 class APIConfig:
-    base_url: str = os.getenv("BACKEND_URL", "http://localhost:8000")
+    base_url: str = os.getenv("BACKEND_URL")
     timeout: int = 90
     max_retries: int = 3
     
