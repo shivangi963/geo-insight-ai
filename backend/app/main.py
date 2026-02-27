@@ -66,7 +66,7 @@ try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.util import get_remote_address
     from slowapi.errors import RateLimitExceeded
-    
+
     limiter = Limiter(key_func=get_remote_address)
     RATE_LIMITING_AVAILABLE = True
     logger.info("Rate limiting available")
@@ -100,36 +100,47 @@ async def _warmup_clip_model():
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Features: Celery={CELERY_AVAILABLE}, VectorDB={VECTOR_DB_AVAILABLE}, AI={AI_AGENT_AVAILABLE}")
-    
+
+
+    db_connected = False
     max_retries = 3
     for attempt in range(max_retries):
         try:
             await Database.connect()
-            logger.info("Database connected")
+            db_connected = True
+            logger.info("Database connected successfully")
             break
         except Exception as e:
             logger.error(f"Database connection attempt {attempt + 1} failed: {e}")
-            if attempt == max_retries - 1:
-                logger.critical("Failed to connect to database")
-                raise
-            await asyncio.sleep(2 ** attempt)
-    
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)
+
+    if not db_connected:
+        
+        logger.critical(
+            "Could not connect to MongoDB after %d attempts. "
+            "Check MONGODB_URL environment variable in Cloud Run. "
+            "App is running in DEGRADED mode — data endpoints will return 503.",
+            max_retries,
+        )
+
     app.state.startup_time = datetime.now()
     app.state.total_requests = 0
-    
+    app.state.db_connected = db_connected
+
     cleanup_task = asyncio.create_task(periodic_cleanup())
 
     if VECTOR_DB_AVAILABLE:
         asyncio.create_task(_warmup_clip_model())
-    
+
     yield
-    
+
     cleanup_task.cancel()
     try:
         await cleanup_task
     except asyncio.CancelledError:
         pass
-    
+
     logger.info(f"Shutting down {settings.APP_NAME}")
     try:
         await Database.close()
@@ -148,7 +159,6 @@ app = FastAPI(
 
 cors_config = CORSSettings.get_cors_config(settings.ENVIRONMENT)
 app.add_middleware(CORSMiddleware, **cors_config)
-
 
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RequestValidationMiddleware)
@@ -196,11 +206,12 @@ os.makedirs(MAPS_DIR, exist_ok=True)
 app.mount("/static/maps", StaticFiles(directory=MAPS_DIR), name="maps")
 logger.info(f"Static maps mounted: {MAPS_DIR}")
 
+
 @app.get("/")
 async def root():
     startup_time = app.state.startup_time
     uptime = str(datetime.now() - startup_time)
-    
+
     return {
         "application": settings.APP_NAME,
         "version": settings.APP_VERSION,
@@ -210,16 +221,18 @@ async def root():
         "health": "/health",
     }
 
+
 @app.get("/health")
 async def health_check():
     try:
         db_connected = await Database.is_connected()
-        
+
         return {
             "status": "healthy" if db_connected else "degraded",
             "timestamp": datetime.now().isoformat(),
             "version": settings.APP_VERSION,
             "database": "connected" if db_connected else "disconnected",
+            "hint": None if db_connected else "Set MONGODB_URL env var in Cloud Run",
         }
     except Exception as e:
         return {
@@ -229,6 +242,7 @@ async def health_check():
             "database": "unknown",
             "error": str(e)
         }
+
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
@@ -243,6 +257,7 @@ async def http_exception_handler(request, exc):
         }
     )
 
+
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
@@ -256,13 +271,14 @@ async def general_exception_handler(request, exc):
         }
     )
 
+
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "app.main:app",
-        HOST=settings.HOST,
-        PORT=settings.PORT,
+        host=settings.HOST,
+        port=settings.PORT,
         reload=settings.DEBUG,
         log_level="DEBUG" if settings.DEBUG else "info",
         access_log=True,
