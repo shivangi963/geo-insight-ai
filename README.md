@@ -329,8 +329,8 @@ The application is deployed on **Google Cloud Run** with **Google Cloud Build** 
 
 | Service | URL |
 |---|---|
-| Backend API | `https://geoinsight-backend-xxxx-el.a.run.app` |
-| Frontend | `https://geoinsight-frontend-xxxx-el.a.run.app` |
+| Backend API | `https://geoinsight-ai-530105254435.europe-west1.run.app` |
+| Frontend | `https://geoinsight-frontend-530105254435.europe-west1.run.app` |
 | API Docs | `https://geoinsight-backend-xxxx-el.a.run.app/docs` |
 
 **How It Works**
