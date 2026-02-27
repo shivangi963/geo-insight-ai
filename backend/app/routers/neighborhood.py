@@ -238,9 +238,7 @@ async def analyze_neighborhood(
                     request_data=analysis_request.dict()
                 )
                 task_id = task.id
-                logger.info(f"Celery task created: {task_id}")
-            except ImportError:
-                logger.warning("Celery task import failed – using background task")
+            except Exception:
                 use_celery = False
 
         if not use_celery:

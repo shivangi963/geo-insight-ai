@@ -122,7 +122,7 @@ async def analyze_green_space(
                     },
                 )
                 task_id = task.id
-            except ImportError:
+            except Exception:
                 use_celery = False
 
         if not use_celery:
