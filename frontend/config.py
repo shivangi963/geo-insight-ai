@@ -6,7 +6,7 @@ from typing import List
 @dataclass
 class APIConfig:
     base_url: str = os.getenv("BACKEND_URL")
-    timeout: int = 90
+    timeout: int = 180
     max_retries: int = 3
     
 @dataclass
@@ -59,5 +59,5 @@ map_config = MapConfig()
 pagination_config = PaginationConfig()
 
 TASK_POLL_INTERVAL = 3  
-TASK_MAX_WAIT = 300 
+TASK_MAX_WAIT = 600
 TASK_PROGRESS_BAR_ENABLED = True

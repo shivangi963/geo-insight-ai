@@ -43,6 +43,7 @@ def render_neighborhood_page():
     st.divider()
     _render_recent_analyses()
 
+
 def _render_analysis_form(default_address: str = "") -> bool:
     with st.form("neighborhood_form"):
         address = st.text_input(
@@ -86,9 +87,9 @@ def _render_analysis_form(default_address: str = "") -> bool:
         if "current_analysis" in st.session_state:
             del st.session_state["current_analysis"]
         _handle_analysis_submission(address, radius, amenities_selected, email)
-
         return True
     return False
+
 
 def _render_amenity_selector() -> list:
     amenity_options = {
@@ -116,66 +117,84 @@ def _render_amenity_selector() -> list:
 
     return selected
 
+
 def _handle_analysis_submission(address: str, radius: int, amenities: list, email: str = ""):
     st.divider()
 
     import requests as _req
+    response = None
+    used_workflow = False
 
-    with st.spinner("Starting analysis..."):
-        try:
-            payload = {
-                "address": address,
-                "radius_m": radius,
-                "email": email or "",
-                "amenity_types": amenities,          
-            }
-            resp = _req.post(
-                f"{api.base_url}/api/workflow/webhook/analysis",
-                json=payload,
-                timeout=15,
-            )
-            resp.raise_for_status()
-            response = resp.json()
-        except Exception as exc:
-            show_warning_message(f"Workflow unavailable ({exc}), running direct analysis (no email).")
-         
+    if email:
+        with st.spinner("Connecting to workflow engine…"):
+            try:
+                payload = {
+                    "address": address,
+                    "radius_m": radius,
+                    "email": email,
+                    "amenity_types": amenities,
+                }
+                resp = _req.post(
+                    f"{api.base_url}/api/workflow/webhook/analysis",
+                    json=payload,
+                    timeout=30,          
+                )
+                resp.raise_for_status()
+                response = resp.json()
+                used_workflow = True
+            except Exception as exc:
+                show_warning_message(
+                    f"Email notification unavailable right now ({type(exc).__name__}). "
+                    "Running analysis directly — results will still appear below."
+                )
+
+    if not response:
+        with st.spinner("Starting analysis…"):
             response = api.start_neighborhood_analysis({
                 "address": address,
                 "radius_m": radius,
-                "amenity_types": amenities,          
+                "amenity_types": amenities,
                 "include_buildings": False,
                 "generate_map": True,
             })
 
     if not response:
+        show_error_message(
+            "Could not reach the backend. "
+            "It may be starting up (Cloud Run cold-start takes ~30 s). "
+            "Please wait a moment and try again."
+        )
         return
 
     analysis_id = response.get("analysis_id")
     task_id     = response.get("task_id")
 
-    if email:
-        st.info(f" Results will be emailed to **{email}** when the analysis completes.")
+    if used_workflow and email:
+        st.info(f"Results will be emailed to **{email}** when analysis completes.")
 
-    with st.spinner("Analysing neighbourhood..."):
+    with st.spinner("Analysing neighbourhood — this can take 1–3 minutes…"):
         result = poll_task_status(task_id, max_wait=TASK_MAX_WAIT)
 
     if result:
         history = get_session_state("analysis_history", [])
         history.append({
-            "address":               address,
-            "analysis_id":           analysis_id,
-            "walk_score":            result.get("walk_score"),
-            "total_amenities":       result.get("total_amenities"),
+            "address":                address,
+            "analysis_id":            analysis_id,
+            "walk_score":             result.get("walk_score"),
+            "total_amenities":        result.get("total_amenities"),
             "green_space_percentage": result.get("green_space_percentage"),
         })
-
         st.session_state.analysis_history = history[-10:]
         st.session_state.current_analysis = {
             "result":      result,
             "analysis_id": analysis_id,
         }
-
         _display_analysis_results(result, analysis_id)
+    else:
+        show_error_message(
+            "Analysis timed out or failed. "
+            "OSM data fetching can be slow — please try again in a minute."
+        )
 
 
 def _display_analysis_results(result: dict, analysis_id: str, generate_map: bool = True):
@@ -201,6 +220,7 @@ def _display_analysis_results(result: dict, analysis_id: str, generate_map: bool
 
     if generate_map:
         _render_interactive_map(analysis_id)
+
 
 def _render_key_metrics(result: dict):
     green_pct = result.get("green_space_percentage")
@@ -239,9 +259,9 @@ def _render_key_metrics(result: dict):
         with col5:
             st.metric("Green Space", f"{green_pct:.1f}%")
 
+
 def _render_walkability_interpretation(walk_score: float):
     st.divider()
-
     if walk_score >= 90:
         st.success("Walker's Paradise. Daily errands do not require a car.")
     elif walk_score >= 70:
@@ -252,6 +272,7 @@ def _render_walkability_interpretation(walk_score: float):
         st.warning("Car-Dependent. Most errands require a car.")
     else:
         st.error("Very Car-Dependent. Almost all errands require a car.")
+
 
 def _render_amenities_breakdown(amenities: dict):
     st.divider()
@@ -271,14 +292,11 @@ def _render_amenities_breakdown(amenities: dict):
             color=list(amenity_counts.values()),
             color_continuous_scale="viridis",
         )
-
         fig.update_layout(showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("Nearby Places")
-
         cols = st.columns(3)
-
         for idx, (atype, items) in enumerate(amenities.items()):
             if items:
                 with cols[idx % 3]:
@@ -290,6 +308,7 @@ def _render_amenities_breakdown(amenities: dict):
     else:
         st.info("No amenities found in the search radius")
 
+
 def _render_green_space_section(result: dict, analysis_id: str):
     green_pct = result.get("green_space_percentage")
 
@@ -297,9 +316,9 @@ def _render_green_space_section(result: dict, analysis_id: str):
     st.subheader("Green Space Analysis")
 
     breakdown = result.get("green_space_breakdown") or {}
-    viz_path = result.get("green_space_visualization")
-    green_px = result.get("green_pixels", 0) or 0
-    total_px = result.get("total_pixels", 0) or 0
+    viz_path  = result.get("green_space_visualization")
+    green_px  = result.get("green_pixels", 0) or 0
+    total_px  = result.get("total_pixels", 0) or 0
 
     col1, _, _ = st.columns(3)
     with col1:
@@ -314,7 +333,6 @@ def _render_green_space_section(result: dict, analysis_id: str):
         with col_interp:
             st.markdown("What this means")
             st.info(_green_interpretation(green_pct))
-
             if green_pct >= 60:
                 st.success("Excellent green coverage")
             elif green_pct >= 40:
@@ -326,28 +344,22 @@ def _render_green_space_section(result: dict, analysis_id: str):
 
     if breakdown and any(v > 0 for v in breakdown.values()):
         st.markdown("Green Space Breakdown by Type")
-
         labels_map = {
-            "parks_grass": ("Parks / Grass", ""),
+            "parks_grass":   ("Parks / Grass",  ""),
             "forests_woods": ("Forests / Woods", ""),
-            "recreation": ("Recreation", ""),
-            "natural_areas": ("Natural Areas", ""),
+            "recreation":    ("Recreation",      ""),
+            "natural_areas": ("Natural Areas",   ""),
         }
-
         bcols = st.columns(4)
-
         for idx, (key, pct) in enumerate(breakdown.items()):
             label, icon = labels_map.get(key, (key.replace("_", " ").title(), ""))
             with bcols[idx % 4]:
                 st.metric(f"{label}", f"{pct:.1f}%")
-
         st.plotly_chart(_create_breakdown_chart(breakdown), use_container_width=True)
 
     if viz_path:
         st.markdown("Green Space Overlay")
-
         col_img, col_legend = st.columns([3, 1])
-
         with col_img:
             try:
                 img_resp = requests.get(f"{api.base_url}/{viz_path}", timeout=10)
@@ -358,11 +370,11 @@ def _render_green_space_section(result: dict, analysis_id: str):
                     st.warning(f"Visualization image not available (HTTP {img_resp.status_code})")
             except Exception as exc:
                 st.warning(f"Could not load visualization: {exc}")
-
         with col_legend:
             st.markdown("Detected green space")
             st.markdown("---")
             st.caption("Green areas are highlighted on the map.")
+
 
 def _create_green_gauge(percentage: float) -> go.Figure:
     color = (
@@ -370,7 +382,6 @@ def _create_green_gauge(percentage: float) -> go.Figure:
         else "#ffc107" if percentage >= 30
         else "#dc3545"
     )
-
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=percentage,
@@ -379,16 +390,16 @@ def _create_green_gauge(percentage: float) -> go.Figure:
         number={"suffix": "%", "font": {"size": 36}},
         gauge={
             "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "darkblue"},
-            "bar": {"color": color},
+            "bar":  {"color": color},
             "bgcolor": "white",
             "borderwidth": 2,
             "bordercolor": "gray",
             "steps": [
-                {"range": [0, 20], "color": "#ffe6e6"},
+                {"range": [0,  20], "color": "#ffe6e6"},
                 {"range": [20, 40], "color": "#fff4e6"},
                 {"range": [40, 60], "color": "#ffffcc"},
                 {"range": [60, 80], "color": "#e6ffe6"},
-                {"range": [80, 100], "color": "#ccffcc"},
+                {"range": [80,100], "color": "#ccffcc"},
             ],
             "threshold": {
                 "line": {"color": "red", "width": 4},
@@ -397,37 +408,33 @@ def _create_green_gauge(percentage: float) -> go.Figure:
             },
         },
     ))
-
     fig.update_layout(height=280, margin=dict(l=20, r=20, t=60, b=20))
     return fig
 
+
 def _create_breakdown_chart(breakdown: Dict[str, float]) -> go.Figure:
     labels_map = {
-        "parks_grass": "Parks / Grass",
+        "parks_grass":   "Parks / Grass",
         "forests_woods": "Forests / Woods",
-        "recreation": "Recreation",
+        "recreation":    "Recreation",
         "natural_areas": "Natural Areas",
     }
-
     colors_map = {
-        "parks_grass": "#90EE90",
+        "parks_grass":   "#90EE90",
         "forests_woods": "#228B22",
-        "recreation": "#3CB371",
+        "recreation":    "#3CB371",
         "natural_areas": "#6B8E23",
     }
-
     labels = [labels_map.get(k, k) for k in breakdown]
     values = list(breakdown.values())
     colors = [colors_map.get(k, "#00FF00") for k in breakdown]
 
     fig = go.Figure(data=[go.Bar(
-        x=labels,
-        y=values,
+        x=labels, y=values,
         marker_color=colors,
         text=[f"{v:.1f}%" for v in values],
         textposition="auto",
     )])
-
     fig.update_layout(
         title="Green Space by Type",
         xaxis_title="Green Type",
@@ -435,8 +442,8 @@ def _create_breakdown_chart(breakdown: Dict[str, float]) -> go.Figure:
         height=350,
         showlegend=False,
     )
-
     return fig
+
 
 def _green_interpretation(pct: float) -> str:
     if pct >= 60:
@@ -449,11 +456,12 @@ def _green_interpretation(pct: float) -> str:
         return "Limited. Mostly urban with minimal vegetation."
     return "Very low. Highly urbanised area."
 
+
 def _render_interactive_map(analysis_id: str):
     st.divider()
     st.subheader("Interactive Amenities Map")
 
-    map_url = f"{api.base_url}/api/neighborhood/{analysis_id}/map"
+    map_url  = f"{api.base_url}/api/neighborhood/{analysis_id}/map"
     response = api.get(f"/api/neighborhood/{analysis_id}")
 
     if not response:
@@ -478,6 +486,7 @@ def _render_interactive_map(analysis_id: str):
         except requests.exceptions.RequestException as exc:
             st.error(f"Network error: {exc}")
 
+
 def _render_recent_analyses():
     st.subheader("Recent Analyses")
 
@@ -488,7 +497,6 @@ def _render_recent_analyses():
         return
 
     analyses = recent.get("analyses", [])
-
     if not analyses:
         st.info("No analyses yet. Start your first analysis above.")
         return
@@ -496,17 +504,11 @@ def _render_recent_analyses():
     for analysis in analyses:
         _render_analysis_card(analysis)
 
-def _render_analysis_card(analysis: dict):
-    status = analysis.get("status", "unknown")
-    address = analysis.get("address", "Unknown")
-    gs_pct = analysis.get("green_space_percentage")
 
-    emoji = {
-        "completed": "",
-        "processing": "",
-        "pending": "",
-        "failed": ""
-    }.get(status, "")
+def _render_analysis_card(analysis: dict):
+    status  = analysis.get("status", "unknown")
+    address = analysis.get("address", "Unknown")
+    gs_pct  = analysis.get("green_space_percentage")
 
     gs_tag = f" · {gs_pct:.1f}%" if gs_pct is not None else ""
 

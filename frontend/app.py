@@ -10,7 +10,7 @@ try:
     from config import ui_config
 except ImportError:
     class UIConfig:
-        page_title = "GeoInsight AI "
+        page_title = "GeoInsight AI"
         layout = "wide"
         initial_sidebar_state = "collapsed"
     ui_config = UIConfig()
@@ -20,6 +20,19 @@ st.set_page_config(
     layout=ui_config.layout,
     initial_sidebar_state="auto"
 )
+
+def _init_session_state():
+    defaults = [
+        ('analysis_history', []),
+        ('agent_history', []),
+        ('nav_to_analysis', ''),
+        ('ai_query', ''),
+        ('show_ai_history', False),
+    ]
+    for key, val in defaults:
+        if key not in st.session_state:
+            st.session_state[key] = val
+
 
 def _render_sidebar():
     with st.sidebar:
@@ -43,7 +56,7 @@ def _render_sidebar():
         st.divider()
 
         health = api.health_check()
-        if health and health.get("status") == "healthy":
+        if health and health.get("status") in ("healthy", "degraded"):
             st.success("● System Online")
         else:
             st.error("● System Offline")
@@ -53,20 +66,11 @@ def _render_topbar():
     st.markdown("## GeoInsight AI")
     st.divider()
 
-for _key, _val in [
-    ('analysis_history', []),
-    ('agent_history', []),
-    ('nav_to_analysis', ''),
-    ('ai_query', ''),
-    ('show_ai_history', False),
-]:
-    if _key not in st.session_state:
-        st.session_state[_key] = _val
-
+_init_session_state()
 _render_sidebar()
 _render_topbar()
 
-tab0, tab1, tab2, tab3, tab4  = st.tabs([
+tab0, tab1, tab2, tab3, tab4 = st.tabs([
     " Dashboard",
     " Properties",
     " Neighborhood",
