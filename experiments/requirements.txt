@@ -1,0 +1,9 @@
+# CV prototypes (phase1_cv)
+ultralytics==8.3.0
+opencv-python==4.10.0.84
+numpy==1.26.0
+
+# LLM prototypes (phase1_llm), same pins as the production requirements.txt
+torch==2.3.1
+transformers==4.40.0
+google-generativeai==0.3.0

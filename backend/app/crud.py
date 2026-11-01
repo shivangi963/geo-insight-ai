@@ -1,10 +1,12 @@
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from bson import ObjectId
+from bson.errors import InvalidId
+from pymongo.errors import PyMongoError
 from datetime import datetime
 import logging
 
-from .database import get_database, get_sync_database
+from .database import get_database
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,7 @@ def document_to_dict(doc: Dict) -> Dict:
         doc["id"] = str(doc["_id"])
         del doc["_id"]
     return doc
+
 
 class PropertyCRUD:
 
@@ -38,8 +41,8 @@ class PropertyCRUD:
             logger.info(f"Retrieved {len(properties)} properties")
             return properties
 
-        except Exception as e:
-            logger.error(f"Error getting properties: {e}", exc_info=True)
+        except PyMongoError as e:
+            logger.error(f"Database error getting properties: {e}", exc_info=True)
             return []
 
     async def get_property_by_id(self, property_id: str) -> Optional[Dict[str, Any]]:
@@ -48,47 +51,52 @@ class PropertyCRUD:
             try:
                 obj_id = ObjectId(property_id)
                 doc = await db[self.collection_name].find_one({"_id": obj_id})
-            except Exception:
+            except InvalidId:
                 doc = await db[self.collection_name].find_one({"id": property_id})
             return document_to_dict(doc) if doc else None
-        except Exception as e:
-            logger.error(f"Error getting property {property_id}: {e}")
+        except PyMongoError as e:
+            logger.error(f"Database error getting property {property_id}: {e}", exc_info=True)
             return None
 
     async def create_property(self, property_data: BaseModel) -> Dict[str, Any]:
         try:
             db = await get_database()
-            property_dict = property_data.dict()
+            property_dict = property_data.model_dump()
             property_dict["created_at"] = datetime.now()
             property_dict["updated_at"] = datetime.now()
+            
             result = await db[self.collection_name].insert_one(property_dict)
             created_doc = await db[self.collection_name].find_one({"_id": result.inserted_id})
+            
             logger.info(f"Created property: {result.inserted_id}")
             return document_to_dict(created_doc)
-        except Exception as e:
-            logger.error(f"Error creating property: {e}")
+        except PyMongoError as e:
+            logger.error(f"Database error creating property: {e}", exc_info=True)
             raise
 
     async def update_property(self, property_id: str, property_data: BaseModel) -> Optional[Dict[str, Any]]:
         try:
             db = await get_database()
-            update_data = property_data.dict(exclude_unset=True)
+            update_data = property_data.model_dump(exclude_unset=True)
             update_data["updated_at"] = datetime.now()
+            
             try:
                 obj_id = ObjectId(property_id)
                 result = await db[self.collection_name].find_one_and_update(
                     {"_id": obj_id}, {"$set": update_data}, return_document=True
                 )
-            except Exception:
+            except InvalidId:
                 result = await db[self.collection_name].find_one_and_update(
                     {"id": property_id}, {"$set": update_data}, return_document=True
                 )
+                
             if result:
                 logger.info(f"Updated property: {property_id}")
                 return document_to_dict(result)
             return None
-        except Exception as e:
-            logger.error(f"Error updating property: {e}")
+            
+        except PyMongoError as e:
+            logger.error(f"Database error updating property: {e}", exc_info=True)
             return None
 
     async def delete_property(self, property_id: str) -> bool:
@@ -97,19 +105,20 @@ class PropertyCRUD:
             try:
                 obj_id = ObjectId(property_id)
                 result = await db[self.collection_name].delete_one({"_id": obj_id})
-            except Exception:
+            except InvalidId:
                 result = await db[self.collection_name].delete_one({"id": property_id})
+                
             if result.deleted_count > 0:
                 logger.info(f"Deleted property: {property_id}")
                 return True
             return False
-        except Exception as e:
-            logger.error(f"Error deleting property: {e}")
+            
+        except PyMongoError as e:
+            logger.error(f"Database error deleting property: {e}", exc_info=True)
             return False
 
 
 property_crud = PropertyCRUD()
-
 
 NEIGHBORHOOD_ANALYSIS_COLLECTION = "neighborhood_analyses"
 
@@ -120,11 +129,12 @@ async def create_neighborhood_analysis(analysis_data: Dict[str, Any]) -> str:
         analysis_data["created_at"] = datetime.now()
         analysis_data["updated_at"] = datetime.now()
         analysis_data["status"] = analysis_data.get("status", "processing")
+        
         result = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].insert_one(analysis_data)
-        print(f"Created neighbourhood analysis: {result.inserted_id}")
+        logger.info(f"Created neighbourhood analysis: {result.inserted_id}")
         return str(result.inserted_id)
-    except Exception as e:
-        print(f"Error creating neighbourhood analysis: {e}")
+    except PyMongoError as e:
+        logger.error(f"Database error creating neighbourhood analysis: {e}", exc_info=True)
         raise
 
 
@@ -134,11 +144,12 @@ async def get_neighborhood_analysis(analysis_id: str) -> Optional[Dict]:
         try:
             obj_id = ObjectId(analysis_id)
             doc = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].find_one({"_id": obj_id})
-        except Exception:
+        except InvalidId:
             doc = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].find_one({"_id": analysis_id})
+            
         return document_to_dict(doc) if doc else None
-    except Exception as e:
-        print(f"Error getting neighbourhood analysis: {e}")
+    except PyMongoError as e:
+        logger.error(f"Database error getting neighbourhood analysis: {e}", exc_info=True)
         return None
 
 
@@ -149,16 +160,15 @@ async def get_recent_analyses(limit: int = 10) -> List[Dict]:
         analyses = []
         async for doc in cursor:
             analyses.append(document_to_dict(doc))
-        print(f"Retrieved {len(analyses)} recent analyses")
+            
+        logger.info(f"Retrieved {len(analyses)} recent analyses")
         return analyses
-    except Exception as e:
-        print(f"Error getting recent analyses: {e}")
+    except PyMongoError as e:
+        logger.error(f"Database error getting recent analyses: {e}", exc_info=True)
         return []
 
 
-async def update_analysis_status(
-    analysis_id: str, status: str, updates: Optional[Dict] = None
-) -> None:
+async def update_analysis_status(analysis_id: str, status: str, updates: Optional[Dict] = None) -> None:
     try:
         db = await get_database()
         update_data = {"status": status, "updated_at": datetime.now()}
@@ -170,26 +180,26 @@ async def update_analysis_status(
             result = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].update_one(
                 {"_id": obj_id}, {"$set": update_data}
             )
-        except Exception:
+        except InvalidId:
             result = await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].update_one(
                 {"_id": analysis_id}, {"$set": update_data}
             )
 
         if result.modified_count > 0:
-            print(f"Updated analysis {analysis_id} -> {status}")
+            logger.info(f"Updated analysis {analysis_id} -> {status}")
         else:
-            print(f"No document updated for analysis ID: {analysis_id}")
+            logger.warning(f"No document updated for analysis ID: {analysis_id}")
 
-    except Exception as e:
-        print(f"Error updating analysis status: {e}")
+    except PyMongoError as e:
+        logger.error(f"Database error updating analysis status: {e}", exc_info=True)
 
 
 async def get_analysis_count() -> int:
     try:
         db = await get_database()
         return await db[NEIGHBORHOOD_ANALYSIS_COLLECTION].count_documents({})
-    except Exception as e:
-        print(f"Error getting analysis count: {e}")
+    except PyMongoError as e:
+        logger.error(f"Database error getting analysis count: {e}", exc_info=True)
         return 0
 
 
@@ -197,41 +207,56 @@ SATELLITE_ANALYSIS_COLLECTION = "satellite_analyses"
 
 
 async def create_satellite_analysis(analysis_data: Dict) -> str:
-    db = await get_database()
-    analysis_data["created_at"] = datetime.now()
-    analysis_data["updated_at"] = datetime.now()
-    result = await db[SATELLITE_ANALYSIS_COLLECTION].insert_one(analysis_data)
-    return str(result.inserted_id)
+    try:
+        db = await get_database()
+        analysis_data["created_at"] = datetime.now()
+        analysis_data["updated_at"] = datetime.now()
+        
+        result = await db[SATELLITE_ANALYSIS_COLLECTION].insert_one(analysis_data)
+        logger.info(f"Created satellite analysis: {result.inserted_id}")
+        return str(result.inserted_id)
+    except PyMongoError as e:
+        logger.error(f"Database error creating satellite analysis: {e}", exc_info=True)
+        raise
 
 
 async def get_satellite_analysis(analysis_id: str) -> Optional[Dict]:
-    db = await get_database()
     try:
-        obj_id = ObjectId(analysis_id)
-        doc = await db[SATELLITE_ANALYSIS_COLLECTION].find_one({"_id": obj_id})
-    except Exception:
-        doc = await db[SATELLITE_ANALYSIS_COLLECTION].find_one({"_id": analysis_id})
+        db = await get_database()
+        try:
+            obj_id = ObjectId(analysis_id)
+            doc = await db[SATELLITE_ANALYSIS_COLLECTION].find_one({"_id": obj_id})
+        except InvalidId:
+            doc = await db[SATELLITE_ANALYSIS_COLLECTION].find_one({"_id": analysis_id})
 
-    if doc and "_id" in doc:
-        doc["id"] = str(doc["_id"])
-        del doc["_id"]
-    return doc
+        if doc and "_id" in doc:
+            doc["id"] = str(doc["_id"])
+            del doc["_id"]
+        return doc
+    except PyMongoError as e:
+        logger.error(f"Database error getting satellite analysis {analysis_id}: {e}", exc_info=True)
+        return None
 
 
-async def update_satellite_analysis_status(
-    analysis_id: str, status: str, update_data: Dict
-) -> bool:
-    db = await get_database()
+async def update_satellite_analysis_status(analysis_id: str, status: str, update_data: Dict) -> bool:
     try:
-        obj_id = ObjectId(analysis_id)
-        filter_query = {"_id": obj_id}
-    except Exception:
-        filter_query = {"_id": analysis_id}
+        db = await get_database()
+        try:
+            obj_id = ObjectId(analysis_id)
+            filter_query = {"_id": obj_id}
+        except InvalidId:
+            filter_query = {"_id": analysis_id}
 
-    update_data["status"] = status
-    update_data["updated_at"] = datetime.now()
+        update_data["status"] = status
+        update_data["updated_at"] = datetime.now()
 
-    result = await db[SATELLITE_ANALYSIS_COLLECTION].update_one(
-        filter_query, {"$set": update_data}
-    )
-    return result.modified_count > 0
+        result = await db[SATELLITE_ANALYSIS_COLLECTION].update_one(
+            filter_query, {"$set": update_data}
+        )
+        if result.modified_count > 0:
+            logger.info(f"Updated satellite analysis {analysis_id} -> {status}")
+            return True
+        return False
+    except PyMongoError as e:
+        logger.error(f"Database error updating satellite analysis status: {e}", exc_info=True)
+        return False

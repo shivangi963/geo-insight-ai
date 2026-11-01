@@ -34,7 +34,7 @@ Type in an address, ask a question like *"Is this a good area to open a cafe?"* 
 | Database |           MongoDB Atlas (Motor async driver) |
 | Task Queue |         Celery + Redis |
 | Vector DB |          Supabase (pgvector) |
-| Computer Vision |    YOLOv8, OpenCV, CLIP (openai/clip-vit-base-patch32) |
+| Computer Vision |    OpenCV, CLIP (openai/clip-vit-base-patch32) |
 | LLM / AI |           Gemini API, HuggingFace Transformers |
 | Geospatial |         osmnx, Folium, Geopy |
 | Frontend |           Streamlit |
@@ -42,6 +42,7 @@ Type in an address, ask a question like *"Is this a good area to open a cafe?"* 
 | Deployment |         Docker, Google Cloud Run |
 | CI/CD |              Google Cloud Build (triggered on push to `main`) |
 
+YOLOv8 is used only in the Phase 1 prototypes in [`experiments/phase1_cv/`](experiments/phase1_cv/)
 ---
 
 ## Phases
@@ -68,10 +69,10 @@ Type in an address, ask a question like *"Is this a good area to open a cafe?"* 
 ### Phase 1 — AI & ML Fundamentals
 
 **What I Did**
-- Set up a clean Python virtual environment and organised the project into `src/cv` and `src/llm` modules
-- Implemented green space detection using HSV colour thresholding on satellite images
-- Saved binary masks and overlay images to visualise vegetation areas
-- Added YOLO-based street object detection for cars, pedestrians, and urban features
+- Set up a clean Python virtual environment and organised the early prototypes into CV and LLM    modules (the prototypes are in [`experiments/`](experiments/))
+- Prototyped green-space estimation on a satellite image with YOLOv8n-seg plus an HSV colour mask; the reported percentage comes from the colour mask
+- Saved overlay images to visualise the detected green areas
+- Added YOLOv8n street-scene detection that counts cars and pedestrians
 - Built a property description summariser using HuggingFace Transformers (BART)
 - Integrated the Gemini API for higher-quality summaries and tested both side by side
 
@@ -93,7 +94,7 @@ Type in an address, ask a question like *"Is this a good area to open a cafe?"* 
 - Added Pydantic models for request validation and response serialisation
 - Built `/health` and `/api/stats` endpoints for system monitoring
 - Added middleware for logging, security headers, rate limiting (slowapi), and CORS
-- Loaded the Mumbai housing dataset (1,000+ properties) into MongoDB using a custom loader script
+- Loaded the Mumbai housing dataset (76,038 properties) into MongoDB using a custom loader script
 
 **What I Learned**
 - How FastAPI's async/await pattern works and why it matters for performance
@@ -129,7 +130,7 @@ Type in an address, ask a question like *"Is this a good area to open a cafe?"* 
 **What I Did**
 - Integrated OpenStreetMap via `osmnx` to fetch real nearby amenities (restaurants, schools, hospitals, parks, etc.)
 - Built a walk score calculator based on amenity proximity and type weights
-- Added green space analysis using OSM map tiles + OpenCV colour detection — calculates actual vegetation coverage percentage
+- Added green-space estimation from OSM map tiles: OpenCV colour thresholds find areas drawn as parks, grass and woods and report their share of the tile (mapped green space, not measured vegetation or tree canopy)
 - Implemented async neighbourhood analysis with background tasks (FastAPI BackgroundTasks + Celery)
 - Set up Redis as the message broker and result backend for Celery workers
 - Integrated Supabase with pgvector for image embedding storage and cosine similarity search
@@ -175,6 +176,23 @@ Type in an address, ask a question like *"Is this a good area to open a cafe?"* 
 - Environment variable injection at deploy time keeps secrets out of source control entirely
 - Independent service deployments reduce build times and prevent unrelated changes from causing downtime
 - Rolling revisions in Cloud Run enable zero-downtime deploys with automatic rollback on failure
+
+---
+## Green-space analysis: approach and limitations
+
+| Version | Input | Method | Where |
+|---|---|---|---|
+| v1 prototype (Nov 2025) | one satellite image | YOLOv8n-seg + HSV colour mask; the reported % comes from the colour mask | [`experiments/phase1_cv/`](experiments/phase1_cv/) |
+| v2 (production) | OSM map tiles | RGB/HSV colour thresholds for parks/grass, woods, recreation and natural areas | `backend/app/tasks/computer_vision_tasks.py` |
+
+**Why production does not use YOLOv8:** the COCO-pretrained weights have no tree, grass or
+vegetation class (the closest is "potted plant"), so their masks cannot represent green space.
+A detector would need fine-tuning on tree-canopy data to contribute.
+
+**Known limitations of v2**
+- It measures *mapped* green space (what OpenStreetMap draws as park, grass or wood), not actual vegetation or tree canopy.
+- It has not been validated against ground truth.
+- The analysed area is the tile(s) containing the address, not a circle of the requested radius. For radii up to 600 m it is the single tile containing the point; for larger radii it is a 2x2 block anchored on that tile, so it is not centred on the address.
 
 ---
 

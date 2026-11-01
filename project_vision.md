@@ -41,7 +41,7 @@ The system is built in layers:
 
 1. Data layer — MongoDB stores property data and analysis results. Supabase (with pgvector) stores image embeddings for visual similarity search.
 2. Processing layer — FastAPI backend orchestrates everything. Celery + Redis handle long-running tasks asynchronously.
-3. AI layer — YOLOv8 for object detection and green space analysis. CLIP for image embeddings. Gemini API for the intelligent agent that synthesizes everything.
+3. AI layer — CLIP for image embeddings and OpenCV colour segmentation for green-space analysis (YOLOv8 street-detection and green-space prototypes live in `experiments/phase1_cv/`). Gemini API for the intelligent agent that synthesizes everything.
 4. Workflow layer — n8n orchestrates the full analysis pipeline and sends email notifications when results are ready.
 5. Frontend — Streamlit dashboard that non-technical users can actually use.
 

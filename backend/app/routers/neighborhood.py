@@ -1,11 +1,10 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
 from typing import List, Optional, Dict
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse, FileResponse
 import logging
 from datetime import datetime
 import asyncio
 import os
-
 
 from ..models import NeighborhoodAnalysisRequest, NeighborhoodAnalysisResponse, NeighborhoodAnalysis
 from ..crud import (
@@ -15,8 +14,6 @@ from ..crud import (
     update_analysis_status
 )
 from ..geospatial import OpenStreetMapClient, calculate_walk_score
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = logging.getLogger(__name__)
 
@@ -149,21 +146,17 @@ async def process_neighborhood_sync(
             }
         )
 
-        map_path = None
+        map_html = None
         if generate_map and coordinates:
-            await update_analysis_progress(analysis_id, PROGRESS_MAP,
-                                           "Generating map…")
+            await update_analysis_progress(analysis_id, PROGRESS_MAP, "Generating map payload…")
             try:
-                map_filename = f"neighborhood_{analysis_id.replace('-', '_')}.html"
-                map_path = os.path.join("maps", map_filename)
-
-                result = await asyncio.to_thread(
+                # Render HTML string directly into memory instead of writing to disk
+                map_html = await asyncio.to_thread(
                     osm_client.create_map_visualization,
                     address=address,
                     amenities_data=amenities_data,
-                    save_path=map_path
+                    save_path=None
                 )
-                map_path = result if result and os.path.exists(result) else None
             except Exception as exc:
                 logger.error(f"Map generation failed: {exc}")
 
@@ -172,7 +165,8 @@ async def process_neighborhood_sync(
 
         result_data = {
             "walk_score": walk_score,
-            "map_path": map_path,
+            "map_html": map_html,
+            "map_available": bool(map_html),
             "amenities": amenities,
             "total_amenities": total_amenities,
             "coordinates": coordinates,
@@ -221,7 +215,6 @@ async def analyze_neighborhood(
 
         CELERY_AVAILABLE = False
         try:
-            from celery.result import AsyncResult
             from celery_config import celery_app
             CELERY_AVAILABLE = True
         except ImportError:
@@ -235,7 +228,7 @@ async def analyze_neighborhood(
                 from ..tasks.geospatial_tasks import analyze_neighborhood_task
                 task = analyze_neighborhood_task.delay(
                     analysis_id=analysis_id,
-                    request_data=analysis_request.dict()
+                    request_data=analysis_request.model_dump()
                 )
                 task_id = task.id
             except Exception:
@@ -284,7 +277,7 @@ async def get_recent(limit: int = Query(10)):
                 "walk_score": a.get("walk_score"),
                 "total_amenities": total,
                 "created_at": a.get("created_at"),
-                "map_available": bool(a.get("map_path")),
+                "map_available": bool(a.get("map_html")),
                 "amenity_categories": len(amenities),
                 "green_space_percentage": a.get("green_space_percentage"),
             })
@@ -325,7 +318,7 @@ async def get_analysis(analysis_id: str):
         raise HTTPException(status_code=500, detail="Failed to retrieve analysis")
 
 
-@router.get("/{analysis_id}/map")
+@router.get("/{analysis_id}/map", response_class=HTMLResponse)
 async def get_analysis_map(analysis_id: str):
     try:
         analysis = await get_neighborhood_analysis(analysis_id)
@@ -337,28 +330,15 @@ async def get_analysis_map(analysis_id: str):
                 detail=f"Analysis not completed. Status: {analysis.get('status')}"
             )
 
-        map_path = analysis.get("map_path")
-        if not map_path:
-            raise HTTPException(status_code=404, detail="Map not generated")
+        map_html = analysis.get("map_html")
+        if not map_html:
+            raise HTTPException(status_code=404, detail="Map HTML content not generated")
 
-        if not os.path.isabs(map_path):
-            backend_root = os.path.dirname(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            )
-            map_path = os.path.join(backend_root, map_path)
-
-        if not os.path.exists(map_path):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Map file not found: {os.path.basename(map_path)}"
-            )
-
-        return FileResponse(
-            map_path,
-            media_type="text/html",
+        return HTMLResponse(
+            content=map_html,
+            status_code=200,
             headers={
                 "Content-Type": "text/html; charset=utf-8",
-                "Content-Disposition": "inline",
                 "Cache-Control": "no-cache",
             },
         )
@@ -408,4 +388,3 @@ async def generate_location_image(analysis_id: str):
     except Exception as exc:
         logger.error(f"Error generating image: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
-    

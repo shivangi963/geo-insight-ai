@@ -5,7 +5,6 @@ import httpx
 
 from ..crud import property_crud
 from ..models import PropertyCreate, PropertyUpdate, PropertyResponse
-from ..database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,6 @@ async def _auto_embed_property(
         if not vector_db.enabled:
             return 
 
-      
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(image_url)
             if resp.status_code != 200:
@@ -64,23 +62,18 @@ async def _auto_embed_property(
         logger.warning(f"Auto-embed failed for {property_id}: {e}")
 
 
-
 @router.get("", response_model=List[PropertyResponse])
 async def get_properties(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     city: Optional[str] = None,
 ):
-    
     try:
         logger.info(f"/api/properties called - skip:{skip}, limit:{limit}, city:{city}")
 
-        properties = await property_crud.get_all_properties(skip=skip, limit=limit)
-        logger.info(f"   CRUD returned {len(properties)} properties")
-
-        if city:
-            properties = [p for p in properties if p.get("city", "").lower() == city.lower()]
-            logger.info(f"   After city filter: {len(properties)} properties")
+        # City filter applied directly in DB call BEFORE pagination
+        properties = await property_crud.get_all_properties(skip=skip, limit=limit, city=city)
+        logger.info(f"CRUD returned {len(properties)} properties")
 
         valid_props = []
         for p in properties:
@@ -103,7 +96,6 @@ async def create_property(
     property: PropertyCreate,
     background_tasks: BackgroundTasks,
 ):
-   
     try:
         new_property = await property_crud.create_property(property)
 
@@ -113,7 +105,6 @@ async def create_property(
                 str(new_property.get("id", "")),
                 new_property.get("address", ""),
                 property.image_url,
-              
                 locality=new_property.get("locality", ""),
                 city=new_property.get("city", ""),
                 price=new_property.get("price"),
@@ -131,7 +122,6 @@ async def create_property(
 
 @router.get("/{property_id}", response_model=PropertyResponse)
 async def get_property(property_id: str):
- 
     try:
         prop = await property_crud.get_property_by_id(property_id)
         if not prop:
@@ -146,7 +136,6 @@ async def get_property(property_id: str):
 
 @router.put("/{property_id}", response_model=PropertyResponse)
 async def update_property(property_id: str, property_update: PropertyUpdate):
-  
     try:
         updated = await property_crud.update_property(property_id, property_update)
         if not updated:
@@ -161,7 +150,6 @@ async def update_property(property_id: str, property_update: PropertyUpdate):
 
 @router.delete("/{property_id}")
 async def delete_property(property_id: str):
-   
     try:
         deleted = await property_crud.delete_property(property_id)
         if not deleted:

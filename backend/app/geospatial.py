@@ -83,14 +83,12 @@ class LocationGeocoder:
         else:
             logger.warning("GOOGLE_API_KEY not set – falling back to Nominatim only")
 
-   
     def _rate_limit(self):
         elapsed = time.time() - self.last_request_time
         if elapsed < self.min_request_interval:
             time.sleep(self.min_request_interval - elapsed)
         self.last_request_time = time.time()
 
-   
     def _geocode_google(self, address: str) -> Optional[Tuple[float, float]]:
         if not self._google_ok:
             return None
@@ -109,7 +107,6 @@ class LocationGeocoder:
             logger.warning(f"Google geocoding error for '{address}': {exc}")
         return None
 
-    
     def _geocode_nominatim(self, address: str) -> Optional[Tuple[float, float]]:
         parts = [p.strip() for p in address.split(",") if p.strip()]
         for skip in range(len(parts)):
@@ -130,7 +127,6 @@ class LocationGeocoder:
                 logger.warning(f"Nominatim error for '{query}': {exc}")
         return None
 
-    
     def address_to_coordinates(self, address: str) -> Optional[Tuple[float, float]]:
         if not address or not isinstance(address, str):
             logger.warning(f"Invalid address: {address!r}")
@@ -237,55 +233,74 @@ class OpenStreetMapClient:
             east  = lon + delta_lon
             west  = lon - delta_lon
 
-            amenities_data: Dict[str, List] = {}
+            amenities_data: Dict[str, List] = {a: [] for a in amenity_types}
             errors: List[str] = []
-            timeout_count = 0
 
-            for amenity in amenity_types:
-                try:
-                    print(f"Fetching {amenity}…")
-                    query_timeout = 15 if radius >= 5000 else 12 if radius >= 2000 else 10
+            # -------------------------------------------------------------
+            # NEW LOGIC: SINGLE COMBINED OVERPASS QUERY (UNION OF TAGS)
+            # -------------------------------------------------------------
+            print(f"Fetching {len(amenity_types)} amenities simultaneously...")
+            
+            try:
+                # We map leisure vs amenity tags based on standard OSM classification
+                query_tags = {}
+                for am in amenity_types:
+                    key = "leisure" if am in ["park", "pitch", "garden"] else "amenity"
+                    query_tags[f'{key}="{am}"'] = am
+                
+                # Format string to represent multiple OR conditions for osmnx custom filter
+                # E.g. ["amenity"~"restaurant|cafe|bank"]
+                amenity_list = [am for am in amenity_types if am not in ["park", "pitch", "garden"]]
+                leisure_list = [am for am in amenity_types if am in ["park", "pitch", "garden"]]
+                
+                # Fetch everything in a single OSNx geometry request using multiple tags
+                tags_dict = {}
+                if amenity_list:
+                    tags_dict['amenity'] = amenity_list
+                if leisure_list:
+                    tags_dict['leisure'] = leisure_list
+                
+                # Single network call fetching everything at once
+                gdf = ox.features.features_from_bbox(north, south, east, west, tags=tags_dict)
 
-                    amenities = ox.features.features_from_bbox(
-                        north, south, east, west,
-                        tags={'amenity': amenity}
-                    )
+                if not gdf.empty:
+                    for idx, row in gdf.iterrows():
+                        try:
+                            # Safely extract the geometry centroid for points, polygons, or relations
+                            centroid = row.geometry.centroid
+                            a_lat = centroid.y
+                            a_lon = centroid.x
+                        except Exception:
+                            continue
+                            
+                        distance = geodesic(coordinates, (a_lat, a_lon)).km
+                        
+                        # Determine which requested category this row belongs to
+                        assigned_type = None
+                        if 'amenity' in row and row['amenity'] in amenity_list:
+                            assigned_type = row['amenity']
+                        elif 'leisure' in row and row['leisure'] in leisure_list:
+                            assigned_type = row['leisure']
+                            
+                        if not assigned_type:
+                            continue
 
-                    if not amenities.empty:
-                        amenities_list = []
-                        for idx, row in amenities.iterrows():
-                            try:
-                                centroid = row.geometry.centroid
-                                a_lat = centroid.y
-                                a_lon = centroid.x
-                            except Exception:
-                                continue
-                            distance = geodesic(coordinates, (a_lat, a_lon)).km
-                            amenities_list.append({
-                                'name': row.get('name', f'Unknown {amenity}'),
-                                'type': amenity,
-                                'coordinates': {'latitude': float(a_lat), 'longitude': float(a_lon)},
-                                'distance_km': round(distance, 2),
-                            })
-                        amenities_list.sort(key=lambda x: x['distance_km'])
-                        amenities_data[amenity] = amenities_list[:max_results_per_type]
-                    else:
-                        amenities_data[amenity] = []
+                        amenities_data[assigned_type].append({
+                            'name': row.get('name', f'Unknown {assigned_type}'),
+                            'type': assigned_type,
+                            'coordinates': {'latitude': float(a_lat), 'longitude': float(a_lon)},
+                            'distance_km': round(distance, 2),
+                        })
 
-                except TimeoutError:
-                    timeout_count += 1
-                    msg = f"Timeout fetching {amenity}"
-                    print(msg)
-                    errors.append(msg)
-                    amenities_data[amenity] = []
-                    if timeout_count >= 3:
-                        print("Too many timeouts, stopping early")
-                        break
-                except Exception as e:
-                    msg = f"Error fetching {amenity}: {e}"
-                    print(msg)
-                    errors.append(msg)
-                    amenities_data[amenity] = []
+                # Sort lists and apply max limits per category
+                for am in amenities_data:
+                    amenities_data[am].sort(key=lambda x: x['distance_km'])
+                    amenities_data[am] = amenities_data[am][:max_results_per_type]
+
+            except Exception as e:
+                msg = f"Error fetching combined amenities: {e}"
+                print(msg)
+                errors.append(msg)
 
             return {
                 "address":         address,
@@ -294,7 +309,7 @@ class OpenStreetMapClient:
                 "amenities":       amenities_data,
                 "errors":          errors or None,
                 "timestamp":       datetime.now().isoformat(),
-                "timeout_count":   timeout_count,
+                "timeout_count":   0, # Now irrelevant due to single batch query
             }
 
         except Exception as e:
@@ -357,12 +372,7 @@ class OpenStreetMapClient:
 
             lat, lon = coordinates
 
-            if not os.path.isabs(save_path):
-                backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                save_path = os.path.join(backend_root, save_path)
-
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
+            # Ignore file saving since we are returning HTML strings directly per previous refactor
             m = folium.Map(
                 location=[lat, lon],
                 zoom_start=15,
@@ -418,8 +428,17 @@ class OpenStreetMapClient:
             ).add_to(m)
 
             folium.LayerControl().add_to(m)
+            
+            # Since the API router expects an HTML string, render the map to string
+            if save_path is None:
+                 return m.get_root().render()
+                 
+            # Fallback legacy behavior if still called synchronously with save_path
+            if not os.path.isabs(save_path):
+                backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                save_path = os.path.join(backend_root, save_path)
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             m.save(save_path)
-
             if os.path.exists(save_path) and os.path.getsize(save_path) > 1000:
                 return save_path
             return None

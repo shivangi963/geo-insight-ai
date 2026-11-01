@@ -1,11 +1,20 @@
 import pandas as pd
 from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 from datetime import datetime
 import os
 import argparse
 from typing import Optional
 import certifi
-import time
+import logging
+import traceback
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 class MumbaiHousingLoader:
 
@@ -43,7 +52,7 @@ class MumbaiHousingLoader:
                 return price * 1000
             else:
                 return price
-        except:
+        except ValueError:
             return None
 
     def extract_bedrooms(self, bhk_value) -> int:
@@ -51,49 +60,53 @@ class MumbaiHousingLoader:
             return 2
         try:
             return int(bhk_value)
-        except:
+        except ValueError:
             return 2
 
     def load_mumbai_housing(
         self,
         csv_path: str = "data/Mumbai House Prices.csv",
-        clear_existing: bool = True,
+        clear_existing: bool = False,  # Changed default to False
         max_rows: Optional[int] = None,
         verbose: bool = True
     ) -> bool:
 
         if not os.path.exists(csv_path):
-            print(f"File not found: {csv_path}")
+            logger.error(f"File not found: {csv_path}")
             return False
 
         if verbose:
-            print(f"Reading {csv_path}")
+            logger.info(f"Reading {csv_path}")
 
         try:
             df = pd.read_csv(csv_path)
         except Exception as e:
-            print(f"Error reading CSV: {e}")
+            logger.error(f"Error reading CSV: {e}")
             return False
 
         if verbose:
-            print(f"Found {len(df)} rows")
-            print(f"Columns: {', '.join(df.columns.tolist())}")
+            logger.info(f"Found {len(df)} rows")
+            logger.info(f"Columns: {', '.join(df.columns.tolist())}")
 
         if max_rows:
             df = df.head(max_rows)
             if verbose:
-                print(f"Limited to {max_rows} rows")
+                logger.info(f"Limited to {max_rows} rows")
 
         if clear_existing:
-            deleted = self.collection.delete_many({})
-            if verbose:
-                print(f"Deleted {deleted.deleted_count} existing properties")
+            try:
+                deleted = self.collection.delete_many({})
+                if verbose:
+                    logger.info(f"Deleted {deleted.deleted_count} existing properties")
+            except PyMongoError as e:
+                logger.error(f"Database error while clearing collection: {e}")
+                return False
 
         properties_added = 0
         errors = 0
 
         if verbose:
-            print("Processing Mumbai housing data")
+            logger.info("Processing Mumbai housing data")
 
         for idx, row in df.iterrows():
             try:
@@ -121,11 +134,12 @@ class MumbaiHousingLoader:
                     price = 5000000
 
                 bedrooms = self.extract_bedrooms(bhk)
-                bathrooms = max(1.0, bedrooms * 0.75)
+                
+                # Removed fabricated bathroom generation
 
                 try:
                     square_feet = int(float(area_sqft)) if pd.notna(area_sqft) and area_sqft > 0 else int(price / 15000)
-                except:
+                except ValueError:
                     square_feet = int(price / 15000)
 
                 if square_feet > 0:
@@ -144,10 +158,10 @@ class MumbaiHousingLoader:
                     "address": address,
                     "city": city,
                     "state": state,
-                    "zip_code": "400001",
+                    # zip_code omitted to rely on nullable field
                     "price": float(price),
                     "bedrooms": int(bedrooms),
-                    "bathrooms": float(bathrooms),
+                    # bathrooms omitted to rely on nullable field
                     "square_feet": int(square_feet),
                     "property_type": str(property_type),
                     "locality": str(locality),
@@ -163,31 +177,38 @@ class MumbaiHousingLoader:
                 properties_added += 1
 
                 if verbose and properties_added % 100 == 0:
-                    print(f"Loaded {properties_added} properties")
+                    logger.info(f"Loaded {properties_added} properties")
 
-            except:
+            except PyMongoError as db_err:
                 errors += 1
+                logger.error(f"Database error inserting property at row {idx}: {db_err}")
+                continue
+            except Exception as e:
+                errors += 1
+                logger.error(f"Data processing error at row {idx}: {e}")
                 continue
 
         if verbose:
-            print(f"Successfully loaded {properties_added} properties")
-            print(f"Errors: {errors}")
-            print(f"Total in database: {self.collection.count_documents({})}")
+            logger.info(f"Successfully loaded {properties_added} properties")
+            if errors > 0:
+                logger.warning(f"Errors encountered: {errors}")
+            logger.info(f"Total in database: {self.collection.count_documents({})}")
             self.show_stats()
 
         return True
 
     def show_stats(self):
         total = self.collection.count_documents({})
-        print(f"Total properties: {total}")
+        logger.info(f"Total properties: {total}")
 
         pipeline = [
             {"$group": {"_id": "$locality", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}},
             {"$limit": 10}
         ]
+        logger.info("Top 10 localities by count:")
         for doc in self.collection.aggregate(pipeline):
-            print(f"{doc['_id']}: {doc['count']} properties")
+            logger.info(f"  {doc['_id']}: {doc['count']} properties")
 
         pipeline = [
             {"$group": {
@@ -200,16 +221,17 @@ class MumbaiHousingLoader:
         stats = list(self.collection.aggregate(pipeline))
         if stats:
             stat = stats[0]
-            print(f"Average: {stat['avg_price']}")
-            print(f"Minimum: {stat['min_price']}")
-            print(f"Maximum: {stat['max_price']}")
+            logger.info(f"Average Price: {stat['avg_price']:,.2f}")
+            logger.info(f"Minimum Price: {stat['min_price']:,.2f}")
+            logger.info(f"Maximum Price: {stat['max_price']:,.2f}")
 
         pipeline = [
             {"$group": {"_id": "$bedrooms", "count": {"$sum": 1}}},
             {"$sort": {"_id": 1}}
         ]
+        logger.info("Properties by BHK:")
         for doc in self.collection.aggregate(pipeline):
-            print(f"{doc['_id']} BHK: {doc['count']} properties")
+            logger.info(f"  {doc['_id']} BHK: {doc['count']} properties")
 
     def close(self):
         self.client.close()
@@ -236,9 +258,11 @@ def main():
         default='geoinsight_ai'
     )
 
+    # Changed from --keep-existing to --clear-existing
     parser.add_argument(
-        '--keep-existing',
-        action='store_true'
+        '--clear-existing',
+        action='store_true',
+        help="Clear all existing documents in the collection before loading"
     )
 
     parser.add_argument(
@@ -250,22 +274,21 @@ def main():
     args = parser.parse_args()
 
     loader = MumbaiHousingLoader(
-        MONGODB_URL=args.mongodb_url,#(if using atlas )
-    #   MONGODB_URL=args.MONGODB_URL, #(if using local)
+        MONGODB_URL=args.mongodb_url,
         db_name=args.db_name
     )
 
     success = loader.load_mumbai_housing(
         csv_path=args.csv_path,
-        clear_existing=not args.keep_existing,
+        clear_existing=args.clear_existing,
         max_rows=args.max_rows,
         verbose=True
     )
 
     if success:
-        print("Data loaded successfully")
+        logger.info("Data loaded successfully")
     else:
-        print("Data loading failed")
+        logger.error("Data loading failed")
 
     loader.close()
 
@@ -274,8 +297,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("Cancelled")
+        logger.warning("Process cancelled by user")
     except Exception as e:
-        print(f"Error: {e}")
-        import traceback
+        logger.error(f"Unexpected Fatal Error: {e}")
         traceback.print_exc()

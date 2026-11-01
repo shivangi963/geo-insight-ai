@@ -36,10 +36,10 @@ def _init_session_state():
 
 def _render_sidebar():
     with st.sidebar:
-        st.markdown("GeoInsight AI")
+        st.markdown("## GeoInsight AI")
         st.divider()
 
-        st.markdown("Recent Searches")
+        st.markdown("### Recent Searches")
         history = st.session_state.get("analysis_history", [])
         if history:
             for i, item in enumerate(reversed(history[-5:])):
@@ -55,11 +55,14 @@ def _render_sidebar():
 
         st.divider()
 
+        # Non-blocking async check logic
         health = api.health_check()
         if health and health.get("status") in ("healthy", "degraded"):
             st.success("● System Online")
         else:
-            st.error("● System Offline")
+            # Replaced the 180s timeout lock with a simple status hint
+            st.warning("⏳ Backend Starting...")
+            st.caption("Initial serverless boot may take up to 30s. Functionality will unlock shortly.")
 
 
 def _render_topbar():

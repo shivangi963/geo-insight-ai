@@ -42,7 +42,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: docker/Dockerfile.backend
+      dockerfile: Dockerfile.backend
     container_name: geoinsight-backend
     restart: always
     ports:
@@ -140,7 +140,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: docker/Dockerfile.frontend
+      dockerfile: Dockerfile.frontend
     container_name: geoinsight-frontend
     restart: always
     ports:

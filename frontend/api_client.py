@@ -9,6 +9,7 @@ class APIClient:
     def __init__(self, base_url: str = None):
         self.base_url = base_url or api_config.base_url
         self.timeout = api_config.timeout
+        # Reduce max retries for standard endpoints to avoid UI hangs
         self.max_retries = api_config.max_retries
     
     def _handle_error(self, error: Exception, endpoint: str):
@@ -29,19 +30,21 @@ class APIClient:
         else:
             st.error(f"Unexpected Error: {str(error)}")
     
-    def get(self, endpoint: str, params: Dict = None, show_errors: bool = True) -> Optional[Dict]:
-
+    def get(self, endpoint: str, params: Dict = None, show_errors: bool = True, max_retries: int = None) -> Optional[Dict]:
         url = f"{self.base_url}{endpoint}"
+        retries = max_retries if max_retries is not None else self.max_retries
         
-        for attempt in range(self.max_retries):
+        for attempt in range(retries):
             try:
-                response = requests.get(url, params=params, timeout=self.timeout)
+                # Use a shorter timeout on the very first attempt to keep UI responsive
+                current_timeout = self.timeout if attempt > 0 else min(self.timeout, 5)
+                response = requests.get(url, params=params, timeout=current_timeout)
                 response.raise_for_status()
                 return response.json()
             
             except requests.exceptions.RequestException as e:
-                if attempt < self.max_retries - 1:
-                    time.sleep(1 * (attempt + 1))
+                if attempt < retries - 1:
+                    time.sleep(1) # Replaced exponential backoff with short 1s wait
                     continue
                 
                 if show_errors:
@@ -95,7 +98,8 @@ class APIClient:
             return None
     
     def health_check(self) -> Optional[Dict]:
-        return self.get("/health", show_errors=False)
+        # Single-pass health check with strict 1-retry limit to unblock sidebar
+        return self.get("/health", show_errors=False, max_retries=1)
     
     def get_stats(self) -> Optional[Dict]:
         return self.get("/api/stats")

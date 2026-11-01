@@ -53,7 +53,7 @@ class Database:
             MONGODB_URL   = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
             DATABASE_NAME = os.getenv("DATABASE_NAME", "geoinsight_ai")
 
-            logger.info("Connecting to MongoDB: %s", MONGODB_URL)
+            logger.info("Connecting to MongoDB (URL hidden for security)")
             logger.info("Database: %s", DATABASE_NAME)
 
             try:
@@ -113,7 +113,7 @@ def get_sync_database():
     MONGODB_URL   = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
     DATABASE_NAME = os.getenv("DATABASE_NAME", "geoinsight_ai")
 
-    logger.info("Creating sync connection: %s", MONGODB_URL)
+    logger.info("Creating sync connection to MongoDB")
 
     try:
         client = MongoClient(MONGODB_URL, **_pymongo_kwargs())

@@ -1,22 +1,20 @@
-from fastapi import Request, HTTPException
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
 import logging
 import time
-from typing import Callable
 import uuid
-from datetime import datetime
+from typing import Callable
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 
 
 class RequestValidationMiddleware(BaseHTTPMiddleware):
     
-    MAX_CONTENT_LENGTH = 10 * 1024 * 1024
+    MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
     
     async def dispatch(self, request: Request, call_next: Callable) -> Callable:
-        
         try:
             request_id = str(uuid.uuid4())
             request.state.request_id = request_id
@@ -34,8 +32,9 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
             
             if request.method in ["POST", "PUT", "PATCH"]:
                 content_type = request.headers.get("content-type", "")
-                if not content_type or not any(ct in content_type for ct in 
-                    ["application/json", "multipart/form-data", "application/x-www-form-urlencoded"]):
+                if not content_type or not any(
+                    ct in content_type for ct in ["application/json", "multipart/form-data", "application/x-www-form-urlencoded"]
+                ):
                     return JSONResponse(
                         status_code=415,
                         content={
@@ -48,6 +47,7 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
             
             response = await call_next(request)
             
+            # Security and tracing headers
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"
@@ -58,17 +58,19 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
             return response
             
         except Exception as e:
-            logger.error(f"Request validation error: {e}")
+            logger.error(f"Request validation error: {e}", exc_info=True)
             return JSONResponse(
-                status_code=400,
-                content={"error": "Bad request", "detail": str(e)}
+                status_code=500,
+                content={
+                    "error": "Internal server error",
+                    "request_id": getattr(request.state, "request_id", "unknown")
+                }
             )
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable) -> Callable:
-        
         start_time = time.time()
         request_id = getattr(request.state, "request_id", "unknown")
         
@@ -79,20 +81,20 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         
         try:
             response = await call_next(request)
-            
             process_time = time.time() - start_time
             
-            status_indicator = "OK" if 200 <= response.status_code < 300 else \
-                              "REDIRECT" if 300 <= response.status_code < 400 else \
-                              "ERROR"
+            status_indicator = (
+                "OK" if 200 <= response.status_code < 300 else
+                "REDIRECT" if 300 <= response.status_code < 400 else
+                "ERROR"
+            )
             
             logger.info(
                 f"{status_indicator} RESPONSE [ID: {request_id}] "
                 f"Status: {response.status_code} | Time: {process_time:.3f}s"
             )
             
-            response.headers["X-Process-Time"] = str(process_time)
-            
+            response.headers["X-Process-Time"] = f"{process_time:.6f}"
             return response
             
         except Exception as e:
@@ -102,18 +104,3 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 f"Error: {str(e)} | Time: {process_time:.3f}s"
             )
             raise
-
-
-class RateLimitHeaderMiddleware(BaseHTTPMiddleware):
-    
-    async def dispatch(self, request: Request, call_next: Callable) -> Callable:
-        
-        response = await call_next(request)
-        
-        if hasattr(request.state, "rate_limit_info"):
-            info = request.state.rate_limit_info
-            response.headers["X-RateLimit-Limit"] = str(info.get("limit", 60))
-            response.headers["X-RateLimit-Remaining"] = str(info.get("remaining", 60))
-            response.headers["X-RateLimit-Reset"] = str(info.get("reset", 0))
-        
-        return response

@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import os
-import re
 import math
+import asyncio
 from typing import Dict, Any, List, Optional, Tuple
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
 
-
 def _safe(value: Any, fallback: Any = None) -> Any:
-
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
             return fallback
@@ -34,15 +32,11 @@ except Exception as _e:
 
 
 def _npv(rate: float, cash_flows: List[float]) -> float:
- 
     return sum(cf / (1 + rate) ** t for t, cf in enumerate(cash_flows))
 
-
 def _irr(cash_flows: List[float], guess: float = 0.10, max_iter: int = 1000) -> Optional[float]:
-    
     if not cash_flows or cash_flows[0] >= 0:
         return None
-
     rate = guess
     for _ in range(max_iter):
         npv_val  = _npv(rate, cash_flows)
@@ -56,168 +50,35 @@ def _irr(cash_flows: List[float], guess: float = 0.10, max_iter: int = 1000) -> 
         rate = new_rate
     return None
 
-
 def _monthly_mortgage(principal: float, annual_rate: float, years: int) -> float:
-   
     if principal <= 0 or annual_rate <= 0:
         return 0.0
     r = annual_rate / 100 / 12
     n = years * 12
     return principal * r * (1 + r) ** n / ((1 + r) ** n - 1)
 
-_SUFFIX = {
-    'k': 1_000, 'K': 1_000,
-    'l': 1_00_000, 'L': 1_00_000,      
-    'cr': 1_00_00_000, 'Cr': 1_00_00_000,   
-    'crore': 1_00_00_000,
-    'm': 1_000_000, 'M': 1_000_000,
-}
 
-_SUFFIX_PATTERN = re.compile(
-    r'(?:Rs\.?\s*)?(\d{1,3}(?:[,\d]*)?(?:\.\d+)?)\s*'
-    r'(crore|lakh|lac|Cr|cr|L|l|K|k|M|m)\b',
-    re.IGNORECASE
-)
-_PLAIN_PATTERN = re.compile(r'(?<!\d)(\d{4,})(?!\d)')
+# Define Schema function for Gemini to use as a Tool
+def parse_real_estate_query(
+    price: Optional[float] = None,
+    rent: Optional[float] = None,
+    down_pct: Optional[float] = None,
+    expense_ratio: Optional[float] = None,
+    interest_rate: Optional[float] = None,
+    loan_term: Optional[float] = None,
+    holding_years: Optional[float] = None,
+    appreciation_rate: Optional[float] = None,
+    annual_emi: Optional[float] = None,
+    is_investment_query: bool = False
+):
+    """
+    Extracts financial and real estate investment parameters from the user's query.
+    Return None for values that are not explicitly stated or implied.
+    """
+    pass
 
-
-def _parse_indian_number(text: str) -> Optional[float]:
-
-    text = text.replace(',', '').strip()
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
-def extract_labeled_numbers(query: str) -> Dict[str, Optional[float]]:
-  
-    q = query.lower()
-    result: Dict[str, Optional[float]] = {
-        'price': None,
-        'rent': None,
-        'down_pct': None,
-        'expense_ratio': None,
-        'interest_rate': None,
-        'loan_term': None,
-        'holding_years': None,
-        'appreciation_rate': None,
-    }
-
-    tagged: List[Tuple[float, int]] = []   
-
-    for m in _SUFFIX_PATTERN.finditer(query):
-        raw = m.group(1).replace(',', '')
-        suffix = m.group(2)
-        multiplier = _SUFFIX.get(suffix, _SUFFIX.get(suffix.lower(), 1))
-        try:
-            tagged.append((float(raw) * multiplier, m.start()))
-        except ValueError:
-            pass
-
-    covered = {pos for _, pos in tagged}
-
-    for m in _PLAIN_PATTERN.finditer(query):
-        if m.start() not in covered:
-            try:
-                tagged.append((float(m.group(1).replace(',', '')), m.start()))
-            except ValueError:
-                pass
-
-    tagged.sort(key=lambda x: x[1])  
-
-
-    WINDOW = 40   
-
-    def _ctx(pos: int) -> str:
-        return query[max(0, pos - WINDOW): pos + WINDOW].lower()
-
-    price_kw    = ('price', 'worth', 'cost', 'buy', 'purchase', 'value',
-                   'property', 'flat', 'house', 'apartment', 'bhk')
-    rent_kw     = ('rent', 'rental', 'monthly', 'income', 'lease', 'renting')
-    down_kw     = ('down', 'downpayment', 'deposit', 'equity', '%')
-    expense_kw  = ('expense', 'operating', 'opex', 'cost ratio', 'vacancy')
-    rate_kw     = ('interest', 'rate', 'roi', '%', 'percent', 'loan rate')
-    term_kw     = ('year', 'yr', 'term', 'tenure', 'years')
-    hold_kw     = ('hold', 'holding', 'sell after', 'exit')
-    appr_kw     = ('appreciat', 'growth', 'capital gain')
-
-    def _best_match(keywords, exclude_positions) -> Optional[float]:
-  
-        best_val, best_score = None, 0
-        for val, pos in tagged:
-            if pos in exclude_positions:
-                continue
-            ctx = _ctx(pos)
-            score = sum(1 for kw in keywords if kw in ctx)
-            if score > best_score:
-                best_score, best_val = score, val
-        return best_val if best_score > 0 else None
-
-    used: set = set()
-
-    down_match = re.search(r'(\d{1,2})\s*%?\s*down', q)
-    if down_match:
-        result['down_pct'] = float(down_match.group(1))
-        # find and exclude this position
-        for val, pos in tagged:
-            if abs(val - result['down_pct']) < 0.01:
-                used.add(pos)
-
-    rate_match = re.search(
-        r'(\d{1,2}(?:\.\d+)?)\s*%?\s*(?:interest|loan rate|rate of interest)', q
-    ) or re.search(r'(?:interest|rate)\s*(?:of\s*)?(?:interest\s*)?(?:is\s*)?(\d{1,2}(?:\.\d+)?)\s*%', q)
-    if rate_match:
-        result['interest_rate'] = float(rate_match.group(1))
-
-    term_match = re.search(r'(\d{1,2})\s*(?:year|yr|years)\s*(?:loan|tenure|term)', q)
-    if term_match:
-        result['loan_term'] = float(term_match.group(1))
-
-    hold_match = re.search(
-        r'(?:hold|sell after|holding period of?)\s*(\d{1,2})\s*(?:year|yr)', q
-    )
-    if hold_match:
-        result['holding_years'] = float(hold_match.group(1))
-
-    appr_match = re.search(
-        r'(\d{1,2}(?:\.\d+)?)\s*%?\s*(?:appreciat|capital growth|value growth)', q
-    ) or re.search(r'appreciat\w*\s*(?:of|at|@)?\s*(\d{1,2}(?:\.\d+)?)', q)
-    if appr_match:
-        result['appreciation_rate'] = float(appr_match.group(1))
-
-    expense_match = re.search(r'(\d{1,2}(?:\.\d+)?)\s*%?\s*(?:expense|opex|operating)', q)
-    if expense_match:
-        result['expense_ratio'] = float(expense_match.group(1)) / 100
-
-    result['rent']  = _best_match(rent_kw,  used)
-    if result['rent']:
-        for val, pos in tagged:
-            if abs(val - result['rent']) < 0.01:
-                used.add(pos)
-
-    result['price'] = _best_match(price_kw, used)
-    if result['price']:
-        for val, pos in tagged:
-            if abs(val - result['price']) < 0.01:
-                used.add(pos)
-
-
-    remaining = [(v, p) for v, p in tagged if p not in used]
-    if result['price'] is None and result['rent'] is None and len(remaining) >= 2:
-
-        vals = sorted([v for v, _ in remaining], reverse=True)
-        result['price'] = vals[0]
-        result['rent']  = vals[1] if len(vals) > 1 else None
-    elif result['price'] is None and remaining:
-        result['price'] = remaining[0][0]
-    elif result['rent'] is None and remaining:
-        result['rent'] = remaining[0][0]
-
-    return result
 
 class InvestmentAnalyzer:
-
     DEFAULT_DOWN_PCT      = 20.0    
     DEFAULT_INTEREST_RATE = 8.5   
     DEFAULT_LOAN_TERM     = 20    
@@ -241,8 +102,6 @@ class InvestmentAnalyzer:
         capex_pct: float            = DEFAULT_CAPEX_RESERVE,
     ) -> Dict[str, Any]:
         
-
-      
         down_payment   = price * (down_pct / 100)
         closing_costs  = price * closing_cost_pct
         annual_capex   = price * capex_pct
@@ -259,24 +118,17 @@ class InvestmentAnalyzer:
         annual_cf       = annual_noi - annual_dscr - annual_capex_rs   
         monthly_cf      = annual_cf / 12
 
-    
         gross_yield     = (annual_rent / price) * 100
-
         cap_rate        = (annual_noi / price) * 100
-
         coc_roi         = (annual_cf / total_invested) * 100 if total_invested > 0 else 0
 
-      
         monthly_opex    = annual_opex / 12
         beo             = ((monthly_emi + monthly_opex) / monthly_rent * 100
-                           if monthly_rent > 0 else 100.0)
+                            if monthly_rent > 0 else 100.0)
         beo             = min(beo, 100.0)
 
         dscr            = annual_noi / annual_dscr if annual_dscr > 0 else None
-
-
         payback_years   = total_invested / annual_cf if annual_cf > 0 else None
-
 
         future_value    = price * (1 + appreciation_rate / 100) ** holding_years
         equity_gain     = future_value - price       
@@ -285,7 +137,6 @@ class InvestmentAnalyzer:
         )
         net_sale_proceeds = future_value - loan_balance  
 
-       
         cf_series: List[float] = [-total_invested]
         for yr in range(1, holding_years + 1):
             if yr < holding_years:
@@ -300,7 +151,6 @@ class InvestmentAnalyzer:
                                 if one_pct_rule_target > 0 else 0)
 
         return {
-         
             'price':             price,
             'monthly_rent':      monthly_rent,
             'down_pct':          down_pct,
@@ -313,18 +163,15 @@ class InvestmentAnalyzer:
             'expense_ratio':     expense_ratio,
             'holding_years':     holding_years,
             'appreciation_rate': appreciation_rate,
-           
             'monthly_emi':       monthly_emi,
             'monthly_opex':      monthly_opex,
             'monthly_cf':        monthly_cf,
-         
             'annual_rent':       annual_rent,
             'annual_opex':       annual_opex,
             'annual_noi':        annual_noi,
             'annual_capex':      annual_capex_rs,
             'annual_cf':         annual_cf,
             'annual_debt':       annual_dscr,
-     
             'gross_yield':       gross_yield,
             'cap_rate':          cap_rate,
             'coc_roi':           coc_roi,
@@ -332,15 +179,12 @@ class InvestmentAnalyzer:
             'dscr':              dscr,
             'payback_years':     payback_years,
             'one_pct_ratio':     one_pct_ratio,
-    
             'future_value':      future_value,
             'equity_gain':       equity_gain,
             'loan_balance_exit': loan_balance,
             'net_sale_proceeds': net_sale_proceeds,
-        
             'irr':               irr_val,
         }
-
 
 def _remaining_balance(principal: float, annual_rate: float,
                        total_years: int, years_elapsed: int) -> float:
@@ -353,20 +197,15 @@ def _remaining_balance(principal: float, annual_rate: float,
         return 0.0
     return principal * ((1 + r) ** n - (1 + r) ** p) / ((1 + r) ** n - 1)
 
-
-
 def _rs(amount: float) -> str:
-  
     if abs(amount) >= 1_00_00_000:
         return f"Rs. {amount / 1_00_00_000:.2f} Cr"
     if abs(amount) >= 1_00_000:
         return f"Rs. {amount / 1_00_000:.2f} L"
     return f"Rs. {amount:,.0f}"
 
-
 def _pct(val: float) -> str:
     return f"{val:.2f}%"
-
 
 def _dscr_label(dscr: Optional[float]) -> str:
     if dscr is None:    return "N/A (no loan)"
@@ -375,9 +214,7 @@ def _dscr_label(dscr: Optional[float]) -> str:
     if dscr >= 1.0:     return "Marginal (tight)"
     return "Poor (NOI < debt service)"
 
-
 def _quality_badge(coc: float, dscr: Optional[float], cf: float) -> Tuple[str, str]:
-
     if cf < 0:
         return ("NEGATIVE CASH FLOW",
                 "[AVOID] Property costs more than it earns every month.")
@@ -394,7 +231,6 @@ def _quality_badge(coc: float, dscr: Optional[float], cf: float) -> Tuple[str, s
     return ("POOR ",
             "[AVOID / RENEGOTIATE] Returns too low for the risk and capital locked in.")
 
-
 def format_investment_report(m: Dict[str, Any]) -> str:
     quality, recommendation = _quality_badge(m['coc_roi'], m['dscr'], m['monthly_cf'])
     dscr_str    = f"{m['dscr']:.2f}x" if m['dscr'] is not None else "N/A (no loan)"
@@ -403,7 +239,6 @@ def format_investment_report(m: Dict[str, Any]) -> str:
     payback_sig = ('OK' if m['payback_years'] is not None and m['payback_years'] < 15 else 'NO')
     irr_str     = f"{m['irr'] * 100:.1f}%" if m['irr'] is not None else "N/A (no convergence)"
 
-    # 1% rule verdict
     one_pct = m['one_pct_ratio']
     if one_pct >= 1.0:
         one_pct_verdict = f" Passes (ratio {one_pct:.2f}x)"
@@ -418,30 +253,46 @@ INVESTMENT ANALYSIS REPORT
 ---
 
 CAPITAL STRUCTURE
-- Purchase Price: {_rs(m['price'])}
-- Down Payment ({m['down_pct']:.0f}%): {_rs(m['down_payment'])}
-- Stamp Duty + Registration (~{m['closing_costs']/m['price']*100:.0f}%): {_rs(m['closing_costs'])}
-- Total Cash Required: {_rs(m['total_invested'])}
-- Home Loan: {_rs(m['loan_amount'])} @ {m['interest_rate']:.1f}% for {m['loan_term']} yrs
+- Purchase Price: 
+{_rs(m['price'])}
+- Down Payment (
+{m['down_pct']:.0f}%): {_rs(m['down_payment'])}
+- Stamp Duty + Registration (~
+{m['closing_costs']/m['price']*100:.0f}%): {_rs(m['closing_costs'])}
+- Total Cash Required: 
+{_rs(m['total_invested'])}
+- Home Loan: 
+{_rs(m['loan_amount'])} @ {m['interest_rate']:.1f}% for {m['loan_term']} yrs
 
 ---
 
 MONTHLY CASH FLOW
-- Rental Income: +{_rs(m['monthly_rent'])}
-- Operating Expenses ({m['expense_ratio']*100:.0f}%): -{_rs(m['monthly_opex'])}
-- EMI: -{_rs(m['monthly_emi'])}
-- CapEx Reserve: -{_rs(m['annual_capex']/12)}
-- Net Monthly Cash Flow: {_rs(m['monthly_cf'])}** {"Fine" if m['monthly_cf'] >= 0 else "No"}
+- Rental Income: +
+{_rs(m['monthly_rent'])}
+- Operating Expenses (
+{m['expense_ratio']*100:.0f}%): -{_rs(m['monthly_opex'])}
+- EMI: -
+{_rs(m['monthly_emi'])}
+- CapEx Reserve: -
+{_rs(m['annual_capex']/12)}
+- Net Monthly Cash Flow: 
+{_rs(m['monthly_cf'])}** {"Fine" if m['monthly_cf'] >= 0 else "No"}
 
 ---
 
 ANNUAL PERFORMANCE
-- Gross Rental Income: {_rs(m['annual_rent'])}
-- Operating Expenses: -{_rs(m['annual_opex'])}
-- Net Operating Income (NOI): {_rs(m['annual_noi'])}
-- Total Debt Service (EMI × 12): -{_rs(m['annual_debt'])}
-- CapEx Reserve: -{_rs(m['annual_capex'])}
-- Annual Cash Flow: {_rs(m['annual_cf'])}
+- Gross Rental Income: 
+{_rs(m['annual_rent'])}
+- Operating Expenses: -
+{_rs(m['annual_opex'])}
+- Net Operating Income (NOI): 
+{_rs(m['annual_noi'])}
+- Total Debt Service (EMI × 12): -
+{_rs(m['annual_debt'])}
+- CapEx Reserve: -
+{_rs(m['annual_capex'])}
+- Annual Cash Flow: 
+{_rs(m['annual_cf'])}
 
 ---
 
@@ -461,10 +312,12 @@ KEY INVESTMENT METRICS
 
 ADVANCED METRICS
 
-- IRR ({m['holding_years']}-year horizon): {irr_str}
+- IRR (
+{m['holding_years']}-year horizon): {irr_str}
   (Accounts for annual cash flows + sale proceeds after {m['holding_years']} years)
 
-- Appreciation Model ({m['appreciation_rate']:.1f}%/yr over {m['holding_years']} yrs):
+- Appreciation Model (
+{m['appreciation_rate']:.1f}%/yr over {m['holding_years']} yrs):
   - Current Value:  {_rs(m['price'])}
   - Future Value:   {_rs(m['future_value'])}
   - Capital Gain:   {_rs(m['equity_gain'])}
@@ -494,8 +347,7 @@ _analyzer = InvestmentAnalyzer()
 
 
 class LocalExpertAgent:
-   
-
+    
     def __init__(self):
         self.name       = "GeoInsight AI Agent"
         self.use_gemini = GEMINI_AVAILABLE
@@ -504,96 +356,118 @@ class LocalExpertAgent:
         if not self.use_gemini:
             return None
         try:
-            model    = genai.GenerativeModel('gemini-2.5-flash')
-            response = model.generate_content(prompt)
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            # Wrapped in to_thread to prevent blocking the event loop
+            response = await asyncio.to_thread(model.generate_content, prompt)
             return response.text
         except Exception as e:
             print(f"[Gemini error] {e}")
             return None
 
-    
+    async def _extract_with_gemini(self, query: str) -> Dict[str, Any]:
+        default_nums = {
+            'price': None, 'rent': None, 'down_pct': None, 'expense_ratio': None,
+            'interest_rate': None, 'loan_term': None, 'holding_years': None,
+            'appreciation_rate': None, 'annual_emi': None, 'is_investment_query': False
+        }
+        
+        if not self.use_gemini:
+            return default_nums
+
+        try:
+            # Use Gemini Function calling to enforce structured output
+            model = genai.GenerativeModel(
+                'gemini-2.5-flash', 
+                tools=[parse_real_estate_query]
+            )
+            prompt = f"Analyze this real estate query and extract the numbers into the function call parameters: '{query}'"
+            
+            # Non-blocking async API call
+            response = await asyncio.to_thread(model.generate_content, prompt)
+            
+            if response.candidates and response.candidates[0].content.parts:
+                part = response.candidates[0].content.parts[0]
+                if part.function_call:
+                    args = part.function_call.args
+                    # Map the structured response to our defaults safely
+                    for k in default_nums.keys():
+                        if k in args:
+                            val = args[k]
+                            # Protobuf structs can return empty strings for None
+                            default_nums[k] = val if val != "" else None
+            return default_nums
+        except Exception as e:
+            print(f"[Gemini Extraction Error] {e}")
+            return default_nums
+
     async def process_query(self, query: str) -> Dict[str, Any]:
         q = query.lower()
-        nums = extract_labeled_numbers(query)
-
-        is_investment_query = any(
-            w in q for w in
-            ['investment', 'roi', 'irr', 'calculate', 'analyze', 'analyse',
-             'cash flow', 'yield', 'return', 'dscr', 'buy', 'mortgage', 'net cash']
-        )
-
-        annual_mortgage_match = re.search(
-            r'annual\s+(?:mortgage|emi|loan)\s+(?:payments?\s+)?(?:total|is|=|:)?\s*'
-            r'(?:Rs\.?\s*)?(\d[\d,]*(?:\.\d+)?(?:\s*(?:L|Cr|K|lakh|crore))?)',
-            q
-        )
-        if annual_mortgage_match and nums['price'] and nums['rent']:
-            raw_amt = annual_mortgage_match.group(1).replace(',', '').strip()
         
-            annual_emi = None
-            for suf, mult in _SUFFIX.items():
-                if raw_amt.lower().endswith(suf.lower()):
-                    try:
-                        annual_emi = float(raw_amt[:-(len(suf))]) * mult
-                    except ValueError:
-                        pass
-                    break
-            if annual_emi is None:
-                try:
-                    annual_emi = float(raw_amt)
-                except ValueError:
-                    annual_emi = None
+        # Use Gemini Tool Calling to extract numbers instead of fragile Regex
+        nums = await self._extract_with_gemini(query)
+        is_investment_query = nums.get('is_investment_query', False)
+        annual_emi = nums.get('annual_emi')
 
-            if annual_emi:
-                expense_ratio = nums['expense_ratio'] or InvestmentAnalyzer.DEFAULT_EXPENSE_RATIO
-                annual_rent   = nums['rent'] * 12
-                annual_opex   = annual_rent * expense_ratio
-                annual_noi    = annual_rent - annual_opex
-                annual_capex  = nums['price'] * InvestmentAnalyzer.DEFAULT_CAPEX_RESERVE
-                annual_cf     = annual_noi - annual_emi - annual_capex
-                monthly_cf    = annual_cf / 12
-                monthly_emi   = annual_emi / 12
+        if annual_emi and nums['price'] and nums['rent']:
+            expense_ratio = nums['expense_ratio'] or InvestmentAnalyzer.DEFAULT_EXPENSE_RATIO
+            annual_rent   = nums['rent'] * 12
+            annual_opex   = annual_rent * expense_ratio
+            annual_noi    = annual_rent - annual_opex
+            annual_capex  = nums['price'] * InvestmentAnalyzer.DEFAULT_CAPEX_RESERVE
+            annual_cf     = annual_noi - annual_emi - annual_capex
+            monthly_cf    = annual_cf / 12
+            monthly_emi   = annual_emi / 12
 
-                
-                down_pct      = nums['down_pct'] or InvestmentAnalyzer.DEFAULT_DOWN_PCT
-                down_payment  = nums['price'] * (down_pct / 100)
-                closing       = nums['price'] * InvestmentAnalyzer.DEFAULT_CLOSING_COSTS
-                total_invested = down_payment + closing
+            down_pct      = nums['down_pct'] or InvestmentAnalyzer.DEFAULT_DOWN_PCT
+            down_payment  = nums['price'] * (down_pct / 100)
+            closing       = nums['price'] * InvestmentAnalyzer.DEFAULT_CLOSING_COSTS
+            total_invested = down_payment + closing
 
-                coc_roi        = (annual_cf / total_invested * 100) if total_invested > 0 else 0
-                cap_rate       = (annual_noi / nums['price'] * 100) if nums['price'] > 0 else 0
-                gross_yield    = (annual_rent / nums['price'] * 100) if nums['price'] > 0 else 0
-                dscr           = annual_noi / annual_emi if annual_emi > 0 else None
-                monthly_opex   = annual_opex / 12
-                beo            = ((monthly_emi + monthly_opex) / nums['rent'] * 100
-                                  if nums['rent'] > 0 else 100.0)
-                beo            = min(beo, 100.0)
-                payback        = total_invested / annual_cf if annual_cf > 0 else None
+            coc_roi        = (annual_cf / total_invested * 100) if total_invested > 0 else 0
+            cap_rate       = (annual_noi / nums['price'] * 100) if nums['price'] > 0 else 0
+            gross_yield    = (annual_rent / nums['price'] * 100) if nums['price'] > 0 else 0
+            dscr           = annual_noi / annual_emi if annual_emi > 0 else None
+            monthly_opex   = annual_opex / 12
+            beo            = ((monthly_emi + monthly_opex) / nums['rent'] * 100
+                              if nums['rent'] > 0 else 100.0)
+            beo            = min(beo, 100.0)
+            payback        = total_invested / annual_cf if annual_cf > 0 else None
 
-                dscr_str    = f"{dscr:.2f}x" if dscr is not None else "N/A"
-                payback_str = f"{payback:.1f} yrs" if payback is not None else "Never (negative CF)"
+            dscr_str    = f"{dscr:.2f}x" if dscr is not None else "N/A"
+            payback_str = f"{payback:.1f} yrs" if payback is not None else "Never (negative CF)"
 
-                answer = f"""INVESTMENT ANALYSIS — Custom Mortgage Input
+            answer = f"""INVESTMENT ANALYSIS — Custom Mortgage Input
 (Annual mortgage provided directly: {_rs(annual_emi)}/yr = {_rs(monthly_emi)}/month)
 
 ---
 
 MONTHLY CASH FLOW
-- Rental Income: +{_rs(nums['rent'])}
-- Operating Expenses ({expense_ratio*100:.0f}%): -{_rs(monthly_opex)}
-- EMI: -{_rs(monthly_emi)}
-- CapEx Reserve: -{_rs(annual_capex/12)}
-- Net Monthly Cash Flow: {_rs(monthly_cf)} {"✅" if monthly_cf >= 0 else "❌"}
+- Rental Income: +
+{_rs(nums['rent'])}
+- Operating Expenses (
+{expense_ratio*100:.0f}%): -{_rs(monthly_opex)}
+- EMI: -
+{_rs(monthly_emi)}
+- CapEx Reserve: -
+{_rs(annual_capex/12)}
+- Net Monthly Cash Flow: 
+{_rs(monthly_cf)} {"✅" if monthly_cf >= 0 else "❌"}
 
 ---
 
 ANNUAL PERFORMANCE
-- Gross Rent: {_rs(annual_rent)}
-- Operating Expenses: -{_rs(annual_opex)}
-- NOI: {_rs(annual_noi)}
-- Debt Service: -{_rs(annual_emi)}
-- CapEx Reserve: -{_rs(annual_capex)}
-- Annual Cash Flow: {_rs(annual_cf)}
+- Gross Rent: 
+{_rs(annual_rent)}
+- Operating Expenses: -
+{_rs(annual_opex)}
+- NOI: 
+{_rs(annual_noi)}
+- Debt Service: -
+{_rs(annual_emi)}
+- CapEx Reserve: -
+{_rs(annual_capex)}
+- Annual Cash Flow: 
+{_rs(annual_cf)}
 
 ---
 
@@ -610,20 +484,21 @@ KEY METRICS
 Note: Cash-on-Cash ROI estimated using {down_pct:.0f}% down + 7% closing costs = {_rs(total_invested)} total invested.
 Provide down payment % for a more precise figure.
 """
-                return _safe({
-                    'query': query,
-                    'answer': answer,
-                    'calculations': {
-                        'price': nums['price'], 'monthly_rent': nums['rent'],
-                        'monthly_cf': monthly_cf, 'annual_cf': annual_cf,
-                        'coc_roi': coc_roi, 'cap_rate': cap_rate,
-                        'gross_yield': gross_yield, 'dscr': dscr,
-                        'break_even_occ': beo, 'payback_years': payback,
-                        'annual_noi': annual_noi,
-                    },
-                    'success': True, 'confidence': 0.93,
-                    'type': 'investment_analysis',
-                })
+            return _safe({
+                'query': query,
+                'answer': answer,
+                'calculations': {
+                    'price': nums['price'], 'monthly_rent': nums['rent'],
+                    'monthly_cf': monthly_cf, 'annual_cf': annual_cf,
+                    'coc_roi': coc_roi, 'cap_rate': cap_rate,
+                    'gross_yield': gross_yield, 'dscr': dscr,
+                    'break_even_occ': beo, 'payback_years': payback,
+                    'annual_noi': annual_noi,
+                },
+                'success': True, 'confidence': 0.93,
+                'type': 'investment_analysis',
+            })
+            
         if is_investment_query and nums['price'] and nums['rent']:
             kwargs: Dict[str, Any] = {}
             if nums['down_pct'] is not None:
@@ -639,7 +514,8 @@ Provide down payment % for a more precise figure.
             if nums['appreciation_rate'] is not None:
                 kwargs['appreciation_rate'] = nums['appreciation_rate']
 
-            metrics = _analyzer.compute(nums['price'], nums['rent'], kwargs)
+            # Fixed: Added ** to properly unpack kwargs
+            metrics = _analyzer.compute(nums['price'], nums['rent'], **kwargs)
             report  = format_investment_report(metrics)
 
             return _safe({
@@ -651,12 +527,9 @@ Provide down payment % for a more precise figure.
                 'type':        'investment_analysis',
             })
 
-       
         if any(w in q for w in ['price', 'worth', 'value', 'cost', 'rate per sqft']):
             if nums['price']:
                 price = nums['price']
-
-              
                 if self.use_gemini:
                     g = await self._gemini(
                         f"You are an Indian real estate advisor (Mumbai / Bangalore / Delhi markets). "
@@ -684,13 +557,17 @@ Market Segment: {segment}
 Typical Rate: {sqft_range}
 
 Approximate Size at This Price:
-- Economy location: ~{int(price/4000):,} sqft
-- Mid-city location: ~{int(price/7000):,} sqft
-- Prime location:   ~{int(price/12000):,} sqft
+- Economy location: ~
+{int(price/4000):,} sqft
+- Mid-city location: ~
+{int(price/7000):,} sqft
+- Prime location:   ~
+{int(price/12000):,} sqft
 
 Quick Sanity Checks:
 - Fair rental yield (India): 2–4% gross
-- Minimum monthly rent for viability: {_rs(price * 0.003)} – {_rs(price * 0.004)}
+- Minimum monthly rent for viability: 
+{_rs(price * 0.003)} – {_rs(price * 0.004)}
 
 Recommendation: Get 3 comparable sales (comps) from the same micro-market
 to validate. Use PropTiger, 99acres, or MagicBricks for local benchmarks."""
@@ -698,7 +575,6 @@ to validate. Use PropTiger, 99acres, or MagicBricks for local benchmarks."""
                 return {'query': query, 'answer': answer, 'success': True,
                         'confidence': 0.80, 'type': 'price_analysis'}
 
-       
         if any(w in q for w in ['rent', 'rental', 'lease', 'monthly income']):
             if nums['rent']:
                 rent = nums['rent']
@@ -712,13 +588,16 @@ Implied Property Value (at 3% gross yield): {_rs(implied_value)}
 Acceptable range: {_rs(implied_value * 0.8)} – {_rs(implied_value * 1.2)}
 
 Landlord Economics (30% expense ratio):
-- Operating expenses: {_rs(rent * 0.30)}/month
-- Net income after expenses: {_rs(rent * 0.70)}/month
+- Operating expenses: 
+{_rs(rent * 0.30)}/month
+- Net income after expenses: 
+{_rs(rent * 0.70)}/month
 - Target gross yield: 3–5% (India metros)
 
 Tenant Affordability:
 - Rule of thumb: Rent ≤ 30% of take-home pay
-- Minimum household income needed: {_rs(rent * 3.5)}/month ({_rs(rent * 42)}/year)
+- Minimum household income needed: 
+{_rs(rent * 3.5)}/month ({_rs(rent * 42)}/year)
 
 Market Benchmarks (India 2024):
 - Studio / 1BHK (Metro): Rs. 15,000 – 35,000/month
@@ -748,8 +627,10 @@ I can help you with:
 
 Investment Analysis (full metrics: IRR, DSCR, CoC ROI, break-even):
 - "Analyze investment: property Rs. 80L, rent Rs. 25,000/month"
-- "ROI for 1.2 Cr flat with 40,000 monthly rent, 20% down, 8.5% interest"
-- "Calculate IRR for 50L property, 18000 rent, hold 10 years, 5% appreciation"
+- "ROI for 1.2 Cr flat with 40,000 monthly rent, 20
+% down, 8.5% interest"
+- "Calculate IRR for 50L property, 18000 rent, hold 10 years, 5
+% appreciation"
 
 Price Analysis:
 - "Is Rs. 90L a good price for a 2BHK in Bangalore?"

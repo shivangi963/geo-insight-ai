@@ -1,11 +1,13 @@
-from fastapi.responses import StreamingResponse
 import io
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, Depends
-from typing import Any, Optional
-import logging
-from datetime import datetime
 import os
+import logging
+import asyncio
 import traceback
+from datetime import datetime
+from typing import Any, Optional
+
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, Depends
+from fastapi.responses import StreamingResponse
 
 from ..database import get_database
 from ..geospatial import get_osm_map_area, download_osm_tile
@@ -18,7 +20,8 @@ router = APIRouter(prefix="/api/analysis", tags=["green-space-analysis"])
 @router.get("/tile/{zoom}/{tile_x}/{tile_y}")
 async def get_tile(zoom: int, tile_x: int, tile_y: int):
     try:
-        tile_img = download_osm_tile(tile_x, tile_y, zoom)
+        # Offload blocking tile download request to worker thread
+        tile_img = await asyncio.to_thread(download_osm_tile, tile_x, tile_y, zoom)
         if not tile_img:
             raise HTTPException(status_code=404, detail="Tile not found")
 
@@ -31,7 +34,7 @@ async def get_tile(zoom: int, tile_x: int, tile_y: int):
         raise
     except Exception as e:
         logger.error(f"Error fetching tile: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/map")
@@ -41,17 +44,22 @@ async def get_map_image(
     radius_m: int = Query(500, ge=100, le=5000, description="Radius in metres"),
 ):
     try:
-        map_path = get_osm_map_area(latitude, longitude, radius_m)
+        # Offload blocking map area fetch to worker thread
+        map_path = await asyncio.to_thread(get_osm_map_area, latitude, longitude, radius_m)
         if not map_path:
             raise HTTPException(status_code=500, detail="Failed to generate map")
 
-        with open(map_path, "rb") as f:
-            img_data = f.read()
+        def _read_and_cleanup(path: str) -> bytes:
+            with open(path, "rb") as f:
+                data = f.read()
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+            return data
 
-        try:
-            os.unlink(map_path)
-        except Exception:
-            pass
+        # Offload file read and unlink to thread
+        img_data = await asyncio.to_thread(_read_and_cleanup, map_path)
 
         return StreamingResponse(io.BytesIO(img_data), media_type="image/png")
 
@@ -59,7 +67,7 @@ async def get_map_image(
         raise
     except Exception as e:
         logger.error(f"Error generating map: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/info")
@@ -101,7 +109,6 @@ async def analyze_green_space(
 
         CELERY_AVAILABLE = False
         try:
-            from celery.result import AsyncResult
             from celery_config import celery_app
             CELERY_AVAILABLE = True
         except ImportError:
@@ -144,7 +151,7 @@ async def analyze_green_space(
         raise
     except Exception as e:
         logger.error(f"Failed to start green space analysis: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 async def _process_green_space_analysis(
@@ -154,7 +161,6 @@ async def _process_green_space_analysis(
         from ..crud import update_satellite_analysis_status
         from ..geospatial import get_geocoder, get_osm_map_area
         from ..tasks.computer_vision_tasks import analyze_osm_green_spaces
-        import asyncio
 
         await update_satellite_analysis_status(
             analysis_id,
@@ -243,7 +249,7 @@ async def _process_green_space_analysis(
             await update_satellite_analysis_status(
                 analysis_id,
                 "failed",
-                {"error": str(e), "progress": 100},
+                {"error": "Analysis processing failed", "progress": 100},
             )
         except Exception:
             pass
@@ -294,7 +300,7 @@ async def get_recent_green_space_analyses(
 
     except Exception as e:
         logger.error(f"Error fetching recent analyses: {e}\n{traceback.format_exc()}")
-        return {"count": 0, "analyses": [], "error": str(e)}
+        return {"count": 0, "analyses": [], "error": "Internal server error"}
 
 
 @router.get("/green-space/{analysis_id}")

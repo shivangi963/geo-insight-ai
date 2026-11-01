@@ -1,11 +1,18 @@
-
 import os
+import random
+import logging
+from typing import Optional
 import certifi
 from dotenv import load_dotenv
 from pymongo import MongoClient
-import random
+from pymongo.errors import PyMongoError
 
-
+# Configure logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 PROPERTY_IMAGES = {
     "Apartment": [
@@ -36,53 +43,75 @@ DEFAULT_IMAGES = [
     "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600",
 ]
 
-def add_images_to_properties():
 
+def add_images_to_properties(clear_existing: bool = False):
     load_dotenv()
     mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-   
-    if "mongodb+srv" in mongodb_url:
-        print("Connecting to Atlas with SSL...")
-        client = MongoClient(mongodb_url, tlsCAFile=certifi.where())
-    else:
-        print("Connecting to Localhost...")
-        client = MongoClient(mongodb_url)
-    
-    db = client["geoinsight_ai"]
-    
-    properties = list(db.properties.find({"image_url": {"$exists": False}}))
-    
-    if not properties:
-        properties = list(db.properties.find({}))
-        print(f"Updating all {len(properties)} properties...")
-    else:
-        print(f"Found {len(properties)} properties without images")
-    
-    updated = 0
-    for prop in properties:
-        ptype = prop.get("property_type", "Apartment")
+    db_name = os.getenv("DATABASE_NAME", "geoinsight_ai")
+
+    try:
+        if "mongodb+srv" in mongodb_url:
+            logger.info("Connecting to MongoDB Atlas with SSL...")
+            client = MongoClient(mongodb_url, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000)
+        else:
+            logger.info("Connecting to local MongoDB...")
+            client = MongoClient(mongodb_url, serverSelectionTimeoutMS=5000)
+            
+        db = client[db_name]
+    except PyMongoError as e:
+        logger.error(f"Failed to connect to MongoDB: {e}")
+        return
+
+    try:
+        if clear_existing:
+            logger.info("clear_existing=True: Unsetting existing image_url fields from properties...")
+            db.properties.update_many({}, {"$unset": {"image_url": ""}})
+
+        properties = list(db.properties.find({"image_url": {"$exists": False}}))
         
-        images = None
-        for key in PROPERTY_IMAGES:
-            if key.lower() in str(ptype).lower():
-                images = PROPERTY_IMAGES[key]
-                break
+        if not properties:
+            properties = list(db.properties.find({}))
+            logger.info(f"Updating all {len(properties)} properties...")
+        else:
+            logger.info(f"Found {len(properties)} properties without images")
         
-        if not images:
-            images = DEFAULT_IMAGES
-        
-        db.properties.update_one(
-            {"_id": prop["_id"]},
-            {"$set": {"image_url": random.choice(images)}}
-        )
-        updated += 1
-        
-        if updated % 100 == 0:
-            print(f"Updated {updated}/{len(properties)}...")
-    
-    print(f"\nDone Added image URLs to {updated} properties")
-    print("Now run the batch embed from the Vector Search tab")
-    client.close()
+        updated = 0
+        errors = 0
+
+        for prop in properties:
+            try:
+                ptype = prop.get("property_type", "Apartment")
+                
+                images = None
+                for key, img_list in PROPERTY_IMAGES.items():
+                    if key.lower() in str(ptype).lower():
+                        images = img_list
+                        break
+                
+                if not images:
+                    images = DEFAULT_IMAGES
+                
+                db.properties.update_one(
+                    {"_id": prop["_id"]},
+                    {"$set": {"image_url": random.choice(images)}}
+                )
+                updated += 1
+                
+                if updated % 100 == 0:
+                    logger.info(f"Updated {updated}/{len(properties)}...")
+            except PyMongoError as e:
+                errors += 1
+                logger.error(f"Database error updating property ID {prop.get('_id')}: {e}")
+                continue
+
+        logger.info(f"Done! Added image URLs to {updated} properties (Errors: {errors})")
+        logger.info("Now run the batch embed from the Vector Search tab")
+
+    except PyMongoError as e:
+        logger.error(f"Database operation failed: {e}")
+    finally:
+        client.close()
+
 
 if __name__ == "__main__":
-    add_images_to_properties()
+    add_images_to_properties(clear_existing=False)
