@@ -61,7 +61,7 @@ def _render_sidebar():
             st.success(" System Online")
         else:
             # Replaced the 180s timeout lock with a simple status hint
-            st.warning("⏳ Backend Starting...")
+            st.warning("Backend Starting...")
             st.caption("Initial serverless boot may take up to 30s. Functionality will unlock shortly.")
 
 
