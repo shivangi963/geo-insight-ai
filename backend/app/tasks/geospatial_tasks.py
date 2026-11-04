@@ -6,6 +6,7 @@ from app.database import get_sync_database
 from typing import Dict
 from datetime import datetime
 from bson import ObjectId
+from app.supabase_client import vector_db
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MAPS_DIR = os.path.join(PROJECT_ROOT, "maps")
@@ -156,26 +157,26 @@ def analyze_neighborhood_task(self, analysis_id: str, request_data: Dict) -> Dic
             update_analysis_status_sync(db, analysis_id, 'processing', {'progress': 80})
 
             try:
-                os.makedirs(MAPS_DIR, exist_ok=True)
-
                 map_filename = f"neighborhood_{analysis_id.replace('-', '_')}.html"
-                map_absolute_path = os.path.join(MAPS_DIR, map_filename)
-
-                print(f"Generating map at: {map_absolute_path}")
-
-                result_path = osm_client.create_map_visualization(
+                
+                # 1. Ask osm_client to return the HTML string directly (save_path=None)
+                map_html = osm_client.create_map_visualization(
                     address=address,
                     amenities_data=amenities_data,
-                    save_path=map_absolute_path
+                    save_path=None
                 )
-
-                if result_path and os.path.exists(result_path):
-                    map_path = f"maps/{map_filename}"
-                    print(f"  Map created successfully: {map_path}")
-                    print(f"   Absolute path: {result_path}")
-                    print(f"   Size: {os.path.getsize(result_path):,} bytes")
+                if map_html:
+                    # 2. Upload synchronously to Supabase
+                    vector_db.client.storage.from_("maps").upload(
+                        path=map_filename,
+                        file=map_html.encode('utf-8'),
+                        file_options={"content-type": "text/html", "upsert": "true"}
+                    )
+                    # 3. Get URL to save to database
+                    map_path = vector_db.client.storage.from_("maps").get_public_url(map_filename)
+                    print(f" Map uploaded successfully: {map_path}")
                 else:
-                    print(f" Map generation returned no valid path")
+                    print(" Map generation returned no HTML")
                     map_path = None
 
             except Exception as map_error:

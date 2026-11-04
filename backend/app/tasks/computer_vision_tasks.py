@@ -4,6 +4,8 @@ from typing import Dict, Optional, Tuple
 import os
 import logging
 
+from app.supabase_client import vector_db
+
 logger = logging.getLogger(__name__)
 
 
@@ -167,20 +169,32 @@ def create_osm_green_visualization(
         cv2.rectangle(blended, (10, 10), (30 + text_size[0], 60), (0, 0, 0), -1)
         cv2.putText(blended, main_text, (20, 40), font, 1, (255, 255, 255), 2)
 
-        output_filename = f"osm_green_space_{analysis_id}.png"
-        output_path = os.path.join(output_dir, output_filename)
-
         height, width = blended.shape[:2]
         resized = cv2.resize(
             blended,
             (width // 2, height // 2),
             interpolation=cv2.INTER_AREA,
         )
-
         resized_bgr = cv2.cvtColor(resized, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(output_path, resized_bgr)
 
-        return f"results/{output_filename}"
+        # 1. Encode image to memory instead of disk
+        is_success, buffer = cv2.imencode(".png", resized_bgr)
+        if not is_success:
+            raise Exception("Failed to encode image to PNG")
+            
+        img_bytes = buffer.tobytes()
+        output_filename = f"osm_green_space_{analysis_id}.png"
+
+        # 2. Upload synchronously to Supabase
+        vector_db.client.storage.from_("results").upload(
+            path=output_filename, 
+            file=img_bytes, 
+            file_options={"content-type": "image/png", "upsert": "true"}
+        )
+        
+        # 3. Return the public URL
+        public_url = vector_db.client.storage.from_("results").get_public_url(output_filename)
+        return public_url
 
     except Exception as e:
         logger.error(f"Error creating visualization: {e}", exc_info=True)

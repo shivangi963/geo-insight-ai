@@ -285,6 +285,38 @@ class SupabaseVectorDB:
             return {**base, "total_embeddings": resp.count or 0}
         except Exception as exc:
             return {**base, "error": str(exc)}
+        
+
+    async def upload_to_storage(
+        self, 
+        bucket_name: str, 
+        file_path: str, 
+        file_bytes: bytes, 
+        content_type: str
+    ) -> str:
+        """Uploads bytes directly to Supabase Storage and returns the public URL."""
+        if not self._guard():
+            raise RuntimeError("Supabase client is not enabled. Cannot upload files.")
+            
+        def _upload_sync() -> str:
+            # Upload file directly from memory
+            self.client.storage.from_(bucket_name).upload(
+                path=file_path, 
+                file=file_bytes, 
+                file_options={"content-type": content_type, "upsert": "true"}
+            )
+            # Generate and return the public URL
+            return self.client.storage.from_(bucket_name).get_public_url(file_path)
+
+        try:
+            loop = asyncio.get_event_loop()
+            public_url = await loop.run_in_executor(None, _upload_sync)
+            logger.info("Uploaded to Supabase Storage: %s/%s", bucket_name, file_path)
+            return public_url
+        except Exception as exc:
+            logger.error("Storage upload failed for '%s': %s", file_path, exc)
+            raise
+        
 
     def _guard(self) -> bool:
         if not self.enabled or self.client is None:

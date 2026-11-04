@@ -65,7 +65,7 @@ services:
   celery-worker:
     build:
       context: .
-      dockerfile: docker/Dockerfile.backend
+      dockerfile: Dockerfile.backend
     container_name: geoinsight-celery-worker
     restart: always
     environment:
@@ -87,7 +87,7 @@ services:
   flower:
     build:
       context: .
-      dockerfile: docker/Dockerfile.backend
+      dockerfile: Dockerfile.backend
     container_name: geoinsight-flower
     restart: on-failure
     ports:

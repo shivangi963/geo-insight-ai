@@ -13,7 +13,7 @@ def render_dashboard_page():
     stats  = api.get_stats()
     health = api.health_check()
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3= st.columns(3)
     with col1:
         # Pulls actual total count from backend /api/stats
         st.metric("Properties", stats.get("total_properties", 0) if stats else "—")
@@ -22,9 +22,7 @@ def render_dashboard_page():
     with col3:
         # Pulls true unique city count instead of a hardcoded "1"
         st.metric("Cities Covered", stats.get("unique_cities", 0) if stats else "—")
-    with col4:
-        status = "Live" if health and health.get("status") == "healthy" else "Offline"
-        st.metric("System", status)
+    
 
     st.divider()
 

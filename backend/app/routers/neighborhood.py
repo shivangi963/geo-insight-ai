@@ -14,6 +14,7 @@ from ..crud import (
     update_analysis_status
 )
 from ..geospatial import OpenStreetMapClient, calculate_walk_score
+from app.supabase_client import vector_db
 
 logger = logging.getLogger(__name__)
 
@@ -150,13 +151,21 @@ async def process_neighborhood_sync(
         if generate_map and coordinates:
             await update_analysis_progress(analysis_id, PROGRESS_MAP, "Generating map payload…")
             try:
-                # Render HTML string directly into memory instead of writing to disk
-                map_html = await asyncio.to_thread(
+                raw_html = await asyncio.to_thread(
                     osm_client.create_map_visualization,
                     address=address,
                     amenities_data=amenities_data,
                     save_path=None
                 )
+                
+                if raw_html:
+                    # Because we are in an async router, use the async helper we wrote earlier!
+                    map_html = await vector_db.upload_to_storage(
+                        bucket_name="maps",
+                        file_path=f"neighborhood_{analysis_id}.html",
+                        file_bytes=raw_html.encode('utf-8'),
+                        content_type="text/html"
+                    )
             except Exception as exc:
                 logger.error(f"Map generation failed: {exc}")
 

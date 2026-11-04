@@ -23,8 +23,8 @@ def _motor_kwargs() -> dict:
     base = {
         "serverSelectionTimeoutMS": 10000,
         "connectTimeoutMS": 10000,
-        "socketTimeoutMS": 10000,
-        "maxPoolSize": 50,
+        "maxPoolSize": 10, 
+        "minPoolSize": 0,
     }
     if _TLS_CA_FILE:
         base["tlsCAFile"] = _TLS_CA_FILE
@@ -32,7 +32,11 @@ def _motor_kwargs() -> dict:
 
 
 def _pymongo_kwargs() -> dict:
-    base = {"serverSelectionTimeoutMS": 10000}
+    base = {
+        "serverSelectionTimeoutMS": 10000,
+        "maxPoolSize": 5, 
+        "minPoolSize": 0
+    }
     if _TLS_CA_FILE:
         base["tlsCAFile"] = _TLS_CA_FILE
     return base

@@ -163,3 +163,4 @@ credentials/
 # Folders to ignore
 src/
 
+.ruff_cache/

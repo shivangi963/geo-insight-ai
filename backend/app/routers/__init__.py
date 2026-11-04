@@ -4,7 +4,7 @@ __all__ = [
     "ai_agent",
     "vector_search",
     "tasks",
-    "debug_stats",
+    "stats",
     "green_space",      
 ]
 

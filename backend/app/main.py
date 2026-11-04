@@ -111,29 +111,19 @@ app = FastAPI(
 )
 
 # CORS Middleware Setup using consolidated Settings
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8501").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Application Middleware
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RequestValidationMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-# Static Files Mount
-results_dir = os.path.join(os.path.dirname(__file__), "..", "results")
-os.makedirs(results_dir, exist_ok=True)
-app.mount("/results", StaticFiles(directory=results_dir), name="results")
-logger.info(f"Mounted static files: /results → {results_dir}")
-
-BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-MAPS_DIR = os.path.join(os.path.dirname(BACKEND_DIR), "maps")
-os.makedirs(MAPS_DIR, exist_ok=True)
-app.mount("/static/maps", StaticFiles(directory=MAPS_DIR), name="maps")
 
 # Register Routers
 from .routers import (
@@ -142,7 +132,8 @@ from .routers import (
     ai_agent,
     vector_search,
     tasks,
-    green_space
+    green_space,
+    stats,
 )
 
 app.include_router(properties.router)
@@ -151,6 +142,7 @@ app.include_router(ai_agent.router)
 app.include_router(vector_search.router)
 app.include_router(tasks.router)
 app.include_router(green_space.router)
+app.include_router(stats.router)
 app.include_router(workflow_router, prefix="/api/workflow", tags=["workflow"])
 
 logger.info("All routers registered")

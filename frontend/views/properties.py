@@ -212,7 +212,7 @@ def render_add_property():
         with col1:
             address = st.text_input("Address *", placeholder="123 Main Street")
             city = st.text_input("City *", placeholder="Mumbai")
-            state = st.text_input("tate *", placeholder="Maharashtra")
+            state = st.text_input("State *", placeholder="Maharashtra")
             zip_code = st.text_input("ZIP Code *", placeholder="400001")
 
         with col2:

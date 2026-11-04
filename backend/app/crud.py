@@ -5,7 +5,7 @@ from bson.errors import InvalidId
 from pymongo.errors import PyMongoError
 from datetime import datetime
 import logging
-
+import re
 from .database import get_database
 
 logger = logging.getLogger(__name__)
@@ -23,17 +23,16 @@ class PropertyCRUD:
     def __init__(self):
         self.collection_name = "properties"
 
-    async def get_all_properties(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+    async def get_all_properties(
+        self, skip: int = 0, limit: int = 100, city: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         try:
             db = await get_database()
-            logger.debug(f"Fetching properties: skip={skip}, limit={limit}")
+            logger.debug(f"Fetching properties: skip={skip}, limit={limit}, city={city}")
 
-            count = await db[self.collection_name].count_documents({})
-            if count == 0:
-                logger.warning("No properties found in database")
-                return []
-
-            cursor = db[self.collection_name].find().skip(skip).limit(limit)
+            # Filter in the database, before skip/limit; case-insensitive exact match
+            query = {"city": {"$regex": f"^{re.escape(city)}$", "$options": "i"}} if city else {}
+            cursor = db[self.collection_name].find(query).skip(skip).limit(limit)
             properties = []
             async for doc in cursor:
                 properties.append(document_to_dict(doc))

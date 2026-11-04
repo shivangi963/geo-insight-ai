@@ -6,7 +6,7 @@ class PropertyBase(BaseModel):
     address: str
     city: str
     state: str
-    zip_code: str
+    zip_code: Optional[str]= None
     price: Optional[float] = None
     bedrooms: Optional[int] = None
     bathrooms: Optional[float] = None

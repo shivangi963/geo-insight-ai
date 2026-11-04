@@ -58,7 +58,7 @@ YOLOv8 is used only in the Phase 1 prototypes in [`experiments/phase1_cv/`](expe
 - Cleaned messy data — handled missing values, converted price units (Cr/L to INR), computed ₹/sqft, and exported the cleaned file
 
 **What I Learned**
-- Git and GitHub for version control with meaningful commit messages
+- Git and GitHub for version control (`phase-*` branches, `main` as the deploy branch)
 - Handling and cleaning messy real-world data (missing values, unit inconsistencies)
 - Writing Python classes using OOP principles
 - Calculating derived features like `price_per_sqft`
@@ -93,7 +93,7 @@ YOLOv8 is used only in the Phase 1 prototypes in [`experiments/phase1_cv/`](expe
 - Implemented complete CRUD endpoints for properties (`/api/properties`)
 - Added Pydantic models for request validation and response serialisation
 - Built `/health` and `/api/stats` endpoints for system monitoring
-- Added middleware for logging, security headers, rate limiting (slowapi), and CORS
+- Added middleware for request logging, security headers, request validation, and CORS
 - Loaded the Mumbai housing dataset (76,038 properties) into MongoDB using a custom loader script
 
 **What I Learned**
@@ -195,6 +195,12 @@ A detector would need fine-tuning on tree-canopy data to contribute.
 - The analysed area is the tile(s) containing the address, not a circle of the requested radius. For radii up to 600 m it is the single tile containing the point; for larger radii it is a 2x2 block anchored on that tile, so it is not centred on the address.
 
 ---
+## Demo data and known limitations
+
+- **Property photos are stock images.** `add_property_images.py` assigns each property a random photo from a small set of Unsplash images, so "similar homes" demonstrates the pipeline (CLIP embeddings, pgvector, cosine similarity), not real similarity between properties.
+- **Prices and sizes come from a public Kaggle dataset** (`data/Mumbai House Prices.csv`). `load_kaggle_data.py` imputes missing prices and areas.
+- **The AI assistant needs Gemini.** If the API key is missing or the quota is exhausted, it replies with the help message instead of calculating.
+
 
 ## Running Locally
 

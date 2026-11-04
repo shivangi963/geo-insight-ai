@@ -1,6 +1,6 @@
 import pandas as pd
 from pymongo import MongoClient
-from pymongo.errors import PyMongoError
+from pymongo.errors import OperationFailure, PyMongoError, ServerSelectionTimeoutError
 from datetime import datetime
 import os
 import argparse
@@ -8,6 +8,9 @@ from typing import Optional
 import certifi
 import logging
 import traceback
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv())
 
 # Setup logging
 logging.basicConfig(
@@ -20,9 +23,11 @@ class MumbaiHousingLoader:
 
     def __init__(
         self,
-        MONGODB_URL: str = "mongodb://localhost:27017",
+        MONGODB_URL: Optional[str] = None,
         db_name: str = "geoinsight_ai"
     ):
+        MONGODB_URL = MONGODB_URL or os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+        
         if "mongodb+srv" in MONGODB_URL:
             self.client = MongoClient(
                 MONGODB_URL, 
@@ -35,6 +40,16 @@ class MumbaiHousingLoader:
         self.db = self.client[db_name]
         self.collection = self.db["properties"]
 
+    def check_connection(self) -> bool:
+        """Fail fast: verify the URL and credentials once, before touching any data."""
+        try:
+            self.client.admin.command("ping")
+            return True
+        except OperationFailure as e:
+            logger.error(f"MongoDB rejected the username/password ({e.code}). Fix MONGODB_URL in .env.")
+        except PyMongoError as e:
+            logger.error(f"Cannot reach MongoDB: {str(e)[:200]}")
+        return False
 
     def clean_price_with_unit(self, price_value, price_unit) -> Optional[float]:
         if pd.isna(price_value):
@@ -70,6 +85,9 @@ class MumbaiHousingLoader:
         max_rows: Optional[int] = None,
         verbose: bool = True
     ) -> bool:
+
+        if not self.check_connection():
+            return False
 
         if not os.path.exists(csv_path):
             logger.error(f"File not found: {csv_path}")
@@ -179,6 +197,9 @@ class MumbaiHousingLoader:
                 if verbose and properties_added % 100 == 0:
                     logger.info(f"Loaded {properties_added} properties")
 
+            except (OperationFailure, ServerSelectionTimeoutError) as fatal:
+                logger.error(f"Stopping at row {idx}: MongoDB is not accepting writes ({fatal})")
+                return False
             except PyMongoError as db_err:
                 errors += 1
                 logger.error(f"Database error inserting property at row {idx}: {db_err}")
@@ -249,13 +270,13 @@ def main():
     parser.add_argument(
         '--mongodb-url',
         type=str,
-        default='mongodb://localhost:27017'
+        default=os.getenv('MONGODB_URL', 'mongodb://localhost:27017')
     )
 
     parser.add_argument(
         '--db-name',
         type=str,
-        default='geoinsight_ai'
+        default=os.getenv('DATABASE_NAME', 'geoinsight_ai')
     )
 
     # Changed from --keep-existing to --clear-existing

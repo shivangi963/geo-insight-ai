@@ -58,7 +58,7 @@ def _render_sidebar():
         # Non-blocking async check logic
         health = api.health_check()
         if health and health.get("status") in ("healthy", "degraded"):
-            st.success("● System Online")
+            st.success(" System Online")
         else:
             # Replaced the 180s timeout lock with a simple status hint
             st.warning("⏳ Backend Starting...")
@@ -74,44 +74,44 @@ _render_sidebar()
 _render_topbar()
 
 tab0, tab1, tab2, tab3, tab4 = st.tabs([
-    " Dashboard",
-    " Properties",
-    " Neighborhood",
-    " Assistant",
-    " Similar Homes",
+    "Dashboard",
+    "Properties",
+    "Neighborhood",
+    "Assistant",
+    "Similar Homes",
 ])
 
 with tab0:
     try:
-        from pages.dashboard import render_dashboard_page
+        from views.dashboard import render_dashboard_page
         render_dashboard_page()
     except Exception as e:
         st.error(f"Dashboard error: {e}")
 
 with tab1:
     try:
-        from pages.properties import render_properties_page
+        from views.properties import render_properties_page
         render_properties_page()
     except Exception as e:
         st.error(f" Properties page error: {e}")
 
 with tab2:
     try:
-        from pages.neighborhood import render_neighborhood_page
+        from views.neighborhood import render_neighborhood_page
         render_neighborhood_page()
     except Exception as e:
         st.error(f"Neighborhood page error: {e}")
 
 with tab3:
     try:
-        from pages.ai_assistant import render_ai_assistant_page
+        from views.ai_assistant import render_ai_assistant_page
         render_ai_assistant_page()
     except Exception as e:
         st.error(f" AI Assistant page error: {e}")
 
 with tab4:
     try:
-        from pages.vector_search import render_vector_search_page
+        from views.vector_search import render_vector_search_page
         render_vector_search_page()
     except Exception as e:
         st.error(f" Visual Search page error: {e}")
